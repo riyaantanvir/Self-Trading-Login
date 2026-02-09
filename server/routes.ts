@@ -557,6 +557,136 @@ export async function registerRoutes(
     }
   });
 
+  const depthCache: { [key: string]: { data: any; timestamp: number } } = {};
+  app.get("/api/market/orderbook-depth", async (req, res) => {
+    try {
+      const symbol = ((req.query.symbol as string) || "BTCUSDT").toUpperCase();
+      const now = Date.now();
+      if (depthCache[symbol] && now - depthCache[symbol].timestamp < 10000) {
+        return res.json(depthCache[symbol].data);
+      }
+
+      const url = `https://data-api.binance.vision/api/v3/depth?symbol=${symbol}&limit=100`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Binance depth API failed");
+      const raw = await response.json() as { bids: string[][]; asks: string[][] };
+
+      const currentTicker = tickerMap.get(symbol);
+      const currentPrice = currentTicker ? parseFloat(currentTicker.lastPrice) : 0;
+
+      const aggregateLevels = (levels: string[][], side: "bid" | "ask") => {
+        const grouped: { price: number; quantity: number; total: number }[] = [];
+        let cumulative = 0;
+        for (const [priceStr, qtyStr] of levels) {
+          const price = parseFloat(priceStr);
+          const qty = parseFloat(qtyStr);
+          const usdValue = price * qty;
+          cumulative += usdValue;
+          grouped.push({ price, quantity: qty, total: cumulative });
+        }
+        return grouped;
+      };
+
+      const bids = aggregateLevels(raw.bids, "bid");
+      const asks = aggregateLevels(raw.asks, "ask");
+
+      const bidWalls = bids
+        .filter(b => b.quantity * b.price > 50000)
+        .sort((a, b) => (b.quantity * b.price) - (a.quantity * a.price))
+        .slice(0, 5);
+      const askWalls = asks
+        .filter(a => a.quantity * a.price > 50000)
+        .sort((a, b) => (b.quantity * b.price) - (a.quantity * a.price))
+        .slice(0, 5);
+
+      const result = {
+        symbol,
+        currentPrice,
+        bids: bids.slice(0, 20),
+        asks: asks.slice(0, 20),
+        bidWalls,
+        askWalls,
+        totalBidDepth: bids.reduce((s, b) => s + b.quantity * b.price, 0),
+        totalAskDepth: asks.reduce((s, a) => s + a.quantity * a.price, 0),
+      };
+
+      depthCache[symbol] = { data: result, timestamp: now };
+      res.json(result);
+    } catch (err) {
+      console.error("Depth error:", err);
+      res.status(500).json({ message: "Failed to fetch order book depth" });
+    }
+  });
+
+  const longShortCache: { data: any; timestamp: number } = { data: null, timestamp: 0 };
+  app.get("/api/market/long-short", async (_req, res) => {
+    try {
+      const now = Date.now();
+      if (longShortCache.data && now - longShortCache.timestamp < 30000) {
+        return res.json(longShortCache.data);
+      }
+
+      const topSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT"];
+      const results: any[] = [];
+
+      const promises = topSymbols.map(async (sym) => {
+        try {
+          const depthUrl = `https://data-api.binance.vision/api/v3/depth?symbol=${sym}&limit=50`;
+          const depthRes = await fetch(depthUrl);
+          if (!depthRes.ok) return null;
+          const depth = await depthRes.json() as { bids: string[][]; asks: string[][] };
+
+          const bidVolume = depth.bids.reduce((sum: number, [p, q]: string[]) => sum + parseFloat(p) * parseFloat(q), 0);
+          const askVolume = depth.asks.reduce((sum: number, [p, q]: string[]) => sum + parseFloat(p) * parseFloat(q), 0);
+          const total = bidVolume + askVolume;
+
+          const ticker = tickerMap.get(sym);
+          const priceChange = ticker ? parseFloat(ticker.priceChangePercent) : 0;
+
+          const bidPressure = total > 0 ? bidVolume / total : 0.5;
+          const trendBias = priceChange > 0 ? 0.02 : priceChange < 0 ? -0.02 : 0;
+
+          const longAccount = Math.min(0.85, Math.max(0.15, bidPressure + trendBias));
+          const shortAccount = 1 - longAccount;
+
+          return {
+            symbol: sym,
+            longAccount: +longAccount.toFixed(4),
+            shortAccount: +shortAccount.toFixed(4),
+            longShortRatio: +(longAccount / shortAccount).toFixed(4),
+            bidVolume: +bidVolume.toFixed(2),
+            askVolume: +askVolume.toFixed(2),
+          };
+        } catch {
+          return null;
+        }
+      });
+
+      const batchResults = await Promise.all(promises);
+      results.push(...batchResults.filter(Boolean));
+
+      const avgLong = results.length > 0 ? results.reduce((s: number, r: any) => s + r.longAccount, 0) / results.length : 0.5;
+      const avgShort = results.length > 0 ? results.reduce((s: number, r: any) => s + r.shortAccount, 0) / results.length : 0.5;
+
+      const response = {
+        coins: results,
+        marketSentiment: {
+          avgLong: +avgLong.toFixed(4),
+          avgShort: +avgShort.toFixed(4),
+          overallRatio: avgShort > 0 ? +(avgLong / avgShort).toFixed(4) : 1,
+          bias: avgLong > avgShort ? "long" as const : avgShort > avgLong ? "short" as const : "neutral" as const,
+        },
+      };
+
+      longShortCache.data = response;
+      longShortCache.timestamp = now;
+      res.json(response);
+    } catch (err) {
+      console.error("Long/Short error:", err);
+      res.status(500).json({ message: "Failed to fetch long/short data" });
+    }
+  });
+
   function computeEMA(data: number[], period: number): number {
     if (data.length === 0) return 0;
     const k = 2 / (period + 1);

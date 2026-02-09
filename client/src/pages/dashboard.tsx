@@ -13,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Loader2, Search, ArrowUpDown, Wifi, WifiOff, MoreVertical, Star, Eye, Gauge, Newspaper, ExternalLink, Clock, TrendingUp, TrendingDown, Activity, BarChart3, Zap, ArrowUp, ArrowDown, Minus } from "lucide-react";
+import { Loader2, Search, ArrowUpDown, Wifi, WifiOff, MoreVertical, Star, Eye, Gauge, Newspaper, ExternalLink, Clock, TrendingUp, TrendingDown, Activity, BarChart3, Zap, ArrowUp, ArrowDown, Minus, Layers, Target, Shield, Flame, Scale } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 interface Ticker {
@@ -172,10 +172,60 @@ interface TrendData {
   volumeAnomaly: boolean;
 }
 
+interface DepthLevel {
+  price: number;
+  quantity: number;
+  total: number;
+}
+
+interface DepthData {
+  symbol: string;
+  currentPrice: number;
+  bids: DepthLevel[];
+  asks: DepthLevel[];
+  bidWalls: DepthLevel[];
+  askWalls: DepthLevel[];
+  totalBidDepth: number;
+  totalAskDepth: number;
+}
+
+interface LongShortCoin {
+  symbol: string;
+  longAccount: number;
+  shortAccount: number;
+  longShortRatio: number;
+}
+
+interface LongShortData {
+  coins: LongShortCoin[];
+  marketSentiment: {
+    avgLong: number;
+    avgShort: number;
+    overallRatio: number;
+    bias: "long" | "short" | "neutral";
+  };
+}
+
 function MMTAnalyticsTab({ tickers }: { tickers: Ticker[] }) {
   const [, navigate] = useLocation();
+  const [depthSymbol, setDepthSymbol] = useState("BTCUSDT");
   const { data: trends, isLoading: trendsLoading } = useQuery<TrendData[]>({
     queryKey: ["/api/market/trends"],
+    refetchInterval: 60000,
+  });
+
+  const { data: depthData, isLoading: depthLoading } = useQuery<DepthData>({
+    queryKey: ["/api/market/orderbook-depth", depthSymbol],
+    queryFn: async () => {
+      const res = await fetch(`/api/market/orderbook-depth?symbol=${depthSymbol}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch depth data");
+      return res.json();
+    },
+    refetchInterval: 10000,
+  });
+
+  const { data: longShortData, isLoading: longShortLoading } = useQuery<LongShortData>({
+    queryKey: ["/api/market/long-short"],
     refetchInterval: 60000,
   });
 
@@ -530,6 +580,305 @@ function MMTAnalyticsTab({ tickers }: { tickers: Ticker[] }) {
             </div>
           ) : (
             <div className="py-6 text-center text-muted-foreground text-xs">No trend data available</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="text-xs font-semibold">Order Book Depth & Liquidity</span>
+            </div>
+            <div className="flex items-center gap-1 flex-wrap">
+              {["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"].map((sym) => (
+                <Button
+                  key={sym}
+                  size="sm"
+                  variant={depthSymbol === sym ? "default" : "ghost"}
+                  className="text-[10px]"
+                  onClick={() => setDepthSymbol(sym)}
+                  data-testid={`button-depth-${sym}`}
+                >
+                  {sym.replace("USDT", "")}
+                </Button>
+              ))}
+            </div>
+          </div>
+          {depthLoading ? (
+            <div className="py-6 text-center text-muted-foreground text-xs">
+              <Loader2 className="w-4 h-4 animate-spin mx-auto mb-1" />
+              Loading order book...
+            </div>
+          ) : depthData ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs mb-2">
+                <div>
+                  <span className="text-muted-foreground">Bid Depth: </span>
+                  <span className="font-mono text-[#0ecb81] font-semibold">{formatVol(depthData.totalBidDepth)}</span>
+                </div>
+                <div className="text-center">
+                  <span className="text-muted-foreground">Price: </span>
+                  <span className="font-mono font-semibold">${depthData.currentPrice >= 1 ? depthData.currentPrice.toLocaleString(undefined, { maximumFractionDigits: 2 }) : depthData.currentPrice.toFixed(6)}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Ask Depth: </span>
+                  <span className="font-mono text-[#f6465d] font-semibold">{formatVol(depthData.totalAskDepth)}</span>
+                </div>
+              </div>
+
+              <div className="relative h-32 flex items-end gap-[1px] rounded-md overflow-hidden" data-testid="depth-chart">
+                {(() => {
+                  const allLevels = [...depthData.bids.slice().reverse(), ...depthData.asks];
+                  const maxQtyUsd = Math.max(...allLevels.map(l => l.quantity * l.price), 1);
+                  return allLevels.map((level, i) => {
+                    const isBid = i < depthData.bids.length;
+                    const usdVal = level.quantity * level.price;
+                    const heightPct = Math.max((usdVal / maxQtyUsd) * 100, 2);
+                    const isWall = usdVal > 50000;
+                    return (
+                      <div
+                        key={i}
+                        className={`flex-1 rounded-t-sm transition-all ${isBid ? (isWall ? "bg-[#0ecb81]" : "bg-[#0ecb81]/40") : (isWall ? "bg-[#f6465d]" : "bg-[#f6465d]/40")}`}
+                        style={{ height: `${heightPct}%` }}
+                        title={`$${level.price.toLocaleString()} - ${formatVol(usdVal)}`}
+                      />
+                    );
+                  });
+                })()}
+              </div>
+
+              <div className="flex justify-between text-[10px] text-muted-foreground px-1">
+                <span>Bids (Support)</span>
+                <span>
+                  Ratio: <span className={`font-mono font-semibold ${depthData.totalBidDepth > depthData.totalAskDepth ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+                    {(depthData.totalBidDepth / Math.max(depthData.totalAskDepth, 1)).toFixed(2)}
+                  </span>
+                </span>
+                <span>Asks (Resistance)</span>
+              </div>
+
+              {(depthData.bidWalls.length > 0 || depthData.askWalls.length > 0) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                  {depthData.bidWalls.length > 0 && (
+                    <div>
+                      <div className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
+                        <Shield className="w-3 h-3 text-[#0ecb81]" /> Bid Walls (Support)
+                      </div>
+                      <div className="space-y-0.5">
+                        {depthData.bidWalls.map((w, i) => (
+                          <div key={i} className="flex items-center gap-2 text-[11px] font-mono px-1.5 py-0.5 rounded-sm bg-[#0ecb81]/10">
+                            <span className="text-[#0ecb81]">${w.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                            <span className="text-muted-foreground ml-auto">{formatVol(w.quantity * w.price)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {depthData.askWalls.length > 0 && (
+                    <div>
+                      <div className="text-[10px] text-muted-foreground mb-1 flex items-center gap-1">
+                        <Shield className="w-3 h-3 text-[#f6465d]" /> Ask Walls (Resistance)
+                      </div>
+                      <div className="space-y-0.5">
+                        {depthData.askWalls.map((w, i) => (
+                          <div key={i} className="flex items-center gap-2 text-[11px] font-mono px-1.5 py-0.5 rounded-sm bg-[#f6465d]/10">
+                            <span className="text-[#f6465d]">${w.price.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                            <span className="text-muted-foreground ml-auto">{formatVol(w.quantity * w.price)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-6 text-center text-muted-foreground text-xs">No depth data available</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-3">
+          <div className="flex items-center gap-1.5 mb-3">
+            <Target className="w-3.5 h-3.5 text-orange-400" />
+            <span className="text-xs font-semibold">Liquidation Map</span>
+            <span className="text-[10px] text-muted-foreground ml-auto">Estimated levels by leverage</span>
+          </div>
+          {tickers.length > 0 ? (
+            <div className="space-y-3">
+              {(() => {
+                const leverages = [2, 3, 5, 10, 25, 50, 100];
+                const topCoins = tickers
+                  .sort((a, b) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
+                  .slice(0, 6);
+
+                return (
+                  <>
+                    <div className="overflow-x-auto">
+                      <div className="min-w-[500px]">
+                        <div className="grid grid-cols-[80px_repeat(7,1fr)] gap-1 text-[10px] text-muted-foreground px-1 mb-1">
+                          <span>Coin</span>
+                          {leverages.map(l => <span key={l} className="text-center">{l}x</span>)}
+                        </div>
+                        {topCoins.map((t) => {
+                          const price = parseFloat(t.lastPrice);
+                          const coin = t.symbol.replace("USDT", "");
+                          return (
+                            <div key={t.symbol} className="grid grid-cols-[80px_repeat(7,1fr)] gap-1 items-center text-[11px] hover-elevate rounded-md px-1 py-1 cursor-pointer" onClick={() => navigate(`/trade/${t.symbol.toLowerCase()}`)} data-testid={`row-liq-${t.symbol}`}>
+                              <span className="font-semibold text-xs">{coin}</span>
+                              {leverages.map(lev => {
+                                const liqLong = price * (1 - 1 / lev);
+                                const liqShort = price * (1 + 1 / lev);
+                                const longPct = ((price - liqLong) / price * 100).toFixed(0);
+                                return (
+                                  <div key={lev} className="text-center">
+                                    <div className="font-mono text-[#f6465d] text-[10px]" title={`Long liquidation at $${liqLong.toFixed(2)}`}>
+                                      {price >= 100 ? `$${liqLong.toFixed(0)}` : `$${liqLong.toFixed(4)}`}
+                                    </div>
+                                    <div className="font-mono text-[#0ecb81] text-[9px]" title={`Short liquidation at $${liqShort.toFixed(2)}`}>
+                                      {price >= 100 ? `$${liqShort.toFixed(0)}` : `$${liqShort.toFixed(4)}`}
+                                    </div>
+                                    <div className="text-[8px] text-muted-foreground">-{longPct}%</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4 text-[10px] text-muted-foreground px-1">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-sm bg-[#f6465d]" />
+                        <span>Long Liquidation (support breaks)</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 rounded-sm bg-[#0ecb81]" />
+                        <span>Short Liquidation (squeeze levels)</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-2">
+                      <div className="text-[10px] text-muted-foreground mb-1.5 flex items-center gap-1">
+                        <Flame className="w-3 h-3 text-orange-400" /> Price Range Visualization
+                      </div>
+                      <div className="space-y-1">
+                        {topCoins.slice(0, 4).map((t) => {
+                          const price = parseFloat(t.lastPrice);
+                          const coin = t.symbol.replace("USDT", "");
+                          const liq10Long = price * 0.9;
+                          const liq10Short = price * 1.1;
+                          const liq25Long = price * 0.96;
+                          const liq25Short = price * 1.04;
+                          return (
+                            <div key={t.symbol} className="relative h-5 bg-muted/30 rounded-sm overflow-hidden" data-testid={`liq-zone-${t.symbol}`}>
+                              <div className="absolute left-0 top-0 h-full bg-[#f6465d]/20 rounded-sm" style={{ width: "10%", left: "0%" }} />
+                              <div className="absolute right-0 top-0 h-full bg-[#0ecb81]/20 rounded-sm" style={{ width: "10%" }} />
+                              <div className="absolute top-0 h-full w-px bg-foreground/50" style={{ left: "50%" }} />
+                              <div className="absolute top-0 bottom-0 flex items-center text-[9px] font-mono" style={{ left: "50%", transform: "translateX(-50%)" }}>
+                                <span className="bg-background/80 px-1 rounded-sm">{coin} ${price >= 100 ? price.toFixed(0) : price.toFixed(4)}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          ) : (
+            <div className="py-6 text-center text-muted-foreground text-xs">No market data available</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent className="p-3">
+          <div className="flex items-center gap-1.5 mb-3">
+            <Scale className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="text-xs font-semibold">Net Long/Short Sentiment</span>
+            <span className="text-[10px] text-muted-foreground ml-auto">Order Book Pressure</span>
+          </div>
+          {longShortLoading ? (
+            <div className="py-6 text-center text-muted-foreground text-xs">
+              <Loader2 className="w-4 h-4 animate-spin mx-auto mb-1" />
+              Loading sentiment...
+            </div>
+          ) : longShortData ? (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
+                    <span>Longs</span>
+                    <span>Shorts</span>
+                  </div>
+                  <div className="flex h-6 rounded-md overflow-hidden">
+                    <div
+                      className="bg-[#0ecb81] flex items-center justify-center text-[11px] font-semibold text-white transition-all"
+                      style={{ width: `${longShortData.marketSentiment.avgLong * 100}%` }}
+                      data-testid="bar-long"
+                    >
+                      {(longShortData.marketSentiment.avgLong * 100).toFixed(1)}%
+                    </div>
+                    <div
+                      className="bg-[#f6465d] flex items-center justify-center text-[11px] font-semibold text-white transition-all"
+                      style={{ width: `${longShortData.marketSentiment.avgShort * 100}%` }}
+                      data-testid="bar-short"
+                    >
+                      {(longShortData.marketSentiment.avgShort * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                  <div className="text-center mt-1">
+                    <Badge
+                      className={`text-[10px] no-default-hover-elevate no-default-active-elevate ${longShortData.marketSentiment.bias === "long" ? "bg-[#0ecb81] text-white" : longShortData.marketSentiment.bias === "short" ? "bg-[#f6465d] text-white" : ""}`}
+                    >
+                      Market Bias: {longShortData.marketSentiment.bias.toUpperCase()} (Ratio: {longShortData.marketSentiment.overallRatio.toFixed(2)})
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="grid grid-cols-[1fr_80px_80px_60px] gap-1 text-[10px] text-muted-foreground px-2 mb-1">
+                  <span>Coin</span>
+                  <span className="text-right">Long %</span>
+                  <span className="text-right">Short %</span>
+                  <span className="text-right">Ratio</span>
+                </div>
+                {longShortData.coins.map((coin) => {
+                  const longPct = coin.longAccount * 100;
+                  const shortPct = coin.shortAccount * 100;
+                  const sym = coin.symbol.replace("USDT", "");
+                  return (
+                    <div
+                      key={coin.symbol}
+                      className="grid grid-cols-[1fr_80px_80px_60px] gap-1 items-center text-xs cursor-pointer hover-elevate rounded-md px-2 py-1.5"
+                      onClick={() => navigate(`/trade/${coin.symbol.toLowerCase()}`)}
+                      data-testid={`row-ls-${coin.symbol}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{sym}</span>
+                        <div className="flex-1 h-1.5 rounded-full overflow-hidden flex">
+                          <div className="bg-[#0ecb81] h-full" style={{ width: `${longPct}%` }} />
+                          <div className="bg-[#f6465d] h-full" style={{ width: `${shortPct}%` }} />
+                        </div>
+                      </div>
+                      <span className="font-mono text-[11px] text-[#0ecb81] text-right">{longPct.toFixed(1)}%</span>
+                      <span className="font-mono text-[11px] text-[#f6465d] text-right">{shortPct.toFixed(1)}%</span>
+                      <span className={`font-mono text-[11px] text-right ${coin.longShortRatio > 1 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+                        {coin.longShortRatio.toFixed(2)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="py-6 text-center text-muted-foreground text-xs">No sentiment data available</div>
           )}
         </CardContent>
       </Card>
