@@ -24,7 +24,7 @@ export interface IStorage {
 
   getPriceAlerts(userId: number): Promise<PriceAlert[]>;
   getActivePriceAlerts(): Promise<PriceAlert[]>;
-  createPriceAlert(userId: number, data: { symbol: string; targetPrice: number; direction: string; notifyTelegram?: boolean }): Promise<PriceAlert>;
+  createPriceAlert(userId: number, data: { symbol: string; targetPrice: number; direction: string; notifyTelegram?: boolean; alertType?: string; indicator?: string; indicatorCondition?: string; chartInterval?: string }): Promise<PriceAlert>;
   deletePriceAlert(userId: number, alertId: number): Promise<void>;
   triggerPriceAlert(alertId: number): Promise<void>;
 }
@@ -122,12 +122,16 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
-  async createPriceAlert(userId: number, data: { symbol: string; targetPrice: number; direction: string; notifyTelegram?: boolean }): Promise<PriceAlert> {
+  async createPriceAlert(userId: number, data: { symbol: string; targetPrice: number; direction: string; notifyTelegram?: boolean; alertType?: string; indicator?: string; indicatorCondition?: string; chartInterval?: string }): Promise<PriceAlert> {
     const [alert] = await db.insert(priceAlerts).values({
       userId,
       symbol: data.symbol,
       targetPrice: data.targetPrice,
       direction: data.direction,
+      alertType: data.alertType ?? "price",
+      indicator: data.indicator ?? null,
+      indicatorCondition: data.indicatorCondition ?? null,
+      chartInterval: data.chartInterval ?? null,
       isActive: true,
       triggered: false,
       notifyTelegram: data.notifyTelegram ?? false,

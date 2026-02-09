@@ -138,11 +138,56 @@ function setupBinanceLiveStream(httpServer: Server) {
     broadcast({ type: "tickers", data: tickers });
   }, 1000);
 
+  async function triggerAlertAndNotify(alert: any, currentPrice: number, extraInfo?: string) {
+    await storage.triggerPriceAlert(alert.id);
+    broadcast({
+      type: "alert_triggered",
+      data: {
+        id: alert.id,
+        userId: alert.userId,
+        symbol: alert.symbol,
+        targetPrice: alert.targetPrice,
+        direction: alert.direction,
+        alertType: alert.alertType,
+        currentPrice,
+      },
+    });
+
+    if (alert.notifyTelegram) {
+      try {
+        const alertUser = await storage.getUser(alert.userId);
+        if (alertUser?.telegramBotToken && alertUser?.telegramChatId) {
+          const coin = alert.symbol.replace("USDT", "");
+          let msg: string;
+          if (alert.alertType === "indicator") {
+            const condLabel = alert.indicatorCondition === "bb_upper" ? "Upper Band" : "Lower Band";
+            msg = `<b>Indicator Alert Triggered!</b>\n\n` +
+              `<b>${coin}/USDT</b> - Bollinger Band ${condLabel} hit!\n` +
+              `Timeframe: ${alert.chartInterval}\n` +
+              `Current Price: $${Number(currentPrice).toLocaleString()}\n` +
+              (extraInfo ? `${extraInfo}\n` : "") +
+              `\n- Self Treding`;
+          } else {
+            msg = `<b>Price Alert Triggered!</b>\n\n` +
+              `<b>${coin}/USDT</b> is now ${alert.direction === "above" ? "above" : "below"} your target.\n\n` +
+              `Target: $${Number(alert.targetPrice).toLocaleString()}\n` +
+              `Current: $${Number(currentPrice).toLocaleString()}\n\n` +
+              `- Self Treding`;
+          }
+          await sendTelegramMessage(alertUser.telegramBotToken, alertUser.telegramChatId, msg);
+        }
+      } catch (tgErr) {
+        console.error("[Telegram] Alert notification error:", tgErr);
+      }
+    }
+  }
+
   setInterval(async () => {
     if (tickerMap.size === 0) return;
     try {
       const activeAlerts = await storage.getActivePriceAlerts();
-      for (const alert of activeAlerts) {
+      const priceAlerts = activeAlerts.filter(a => a.alertType === "price");
+      for (const alert of priceAlerts) {
         const ticker = tickerMap.get(alert.symbol);
         if (!ticker) continue;
         const currentPrice = parseFloat(ticker.lastPrice);
@@ -150,41 +195,86 @@ function setupBinanceLiveStream(httpServer: Server) {
           (alert.direction === "above" && currentPrice >= alert.targetPrice) ||
           (alert.direction === "below" && currentPrice <= alert.targetPrice);
         if (shouldTrigger) {
-          await storage.triggerPriceAlert(alert.id);
-          broadcast({
-            type: "alert_triggered",
-            data: {
-              id: alert.id,
-              userId: alert.userId,
-              symbol: alert.symbol,
-              targetPrice: alert.targetPrice,
-              direction: alert.direction,
-              currentPrice,
-            },
-          });
-
-          if (alert.notifyTelegram) {
-            try {
-              const alertUser = await storage.getUser(alert.userId);
-              if (alertUser?.telegramBotToken && alertUser?.telegramChatId) {
-                const coin = alert.symbol.replace("USDT", "");
-                const msg = `<b>Price Alert Triggered!</b>\n\n` +
-                  `<b>${coin}/USDT</b> is now ${alert.direction === "above" ? "above" : "below"} your target.\n\n` +
-                  `Target: $${Number(alert.targetPrice).toLocaleString()}\n` +
-                  `Current: $${Number(currentPrice).toLocaleString()}\n\n` +
-                  `- Self Treding`;
-                await sendTelegramMessage(alertUser.telegramBotToken, alertUser.telegramChatId, msg);
-              }
-            } catch (tgErr) {
-              console.error("[Telegram] Alert notification error:", tgErr);
-            }
-          }
+          await triggerAlertAndNotify(alert, currentPrice);
         }
       }
     } catch (err) {
       console.error("[Alert Check] Error:", err);
     }
   }, 3000);
+
+  function computeBBServer(closes: number[], period = 20, multiplier = 2) {
+    if (closes.length < period) return null;
+    const recent = closes.slice(-period);
+    const sma = recent.reduce((s, v) => s + v, 0) / period;
+    const variance = recent.reduce((s, v) => s + (v - sma) ** 2, 0) / period;
+    const stdDev = Math.sqrt(variance);
+    return { upper: sma + multiplier * stdDev, middle: sma, lower: sma - multiplier * stdDev };
+  }
+
+  const klineCache = new Map<string, { data: number[]; ts: number }>();
+
+  async function fetchKlineCloses(symbol: string, interval: string): Promise<number[]> {
+    const key = `${symbol}_${interval}`;
+    const cached = klineCache.get(key);
+    if (cached && Date.now() - cached.ts < 30000) return cached.data;
+    try {
+      const url = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&limit=50`;
+      const res = await fetch(url);
+      if (!res.ok) return cached?.data || [];
+      const raw = await res.json();
+      const closes = raw.map((k: any) => parseFloat(k[4]));
+      klineCache.set(key, { data: closes, ts: Date.now() });
+      return closes;
+    } catch {
+      return cached?.data || [];
+    }
+  }
+
+  setInterval(async () => {
+    try {
+      const activeAlerts = await storage.getActivePriceAlerts();
+      const indicatorAlerts = activeAlerts.filter(a => a.alertType === "indicator");
+      if (indicatorAlerts.length === 0) return;
+
+      const grouped = new Map<string, typeof indicatorAlerts>();
+      for (const alert of indicatorAlerts) {
+        const key = `${alert.symbol}_${alert.chartInterval || "1h"}`;
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(alert);
+      }
+
+      for (const [key, alerts] of grouped) {
+        const [symbol, interval] = key.split("_");
+        const closes = await fetchKlineCloses(symbol, interval);
+        if (closes.length < 20) continue;
+
+        const bb = computeBBServer(closes);
+        if (!bb) continue;
+
+        const currentPrice = closes[closes.length - 1];
+
+        for (const alert of alerts) {
+          if (alert.indicator === "bollinger_bands") {
+            let shouldTrigger = false;
+            let extraInfo = "";
+            if (alert.indicatorCondition === "bb_upper" && currentPrice >= bb.upper) {
+              shouldTrigger = true;
+              extraInfo = `BB Upper: $${bb.upper.toFixed(2)}`;
+            } else if (alert.indicatorCondition === "bb_lower" && currentPrice <= bb.lower) {
+              shouldTrigger = true;
+              extraInfo = `BB Lower: $${bb.lower.toFixed(2)}`;
+            }
+            if (shouldTrigger) {
+              await triggerAlertAndNotify(alert, currentPrice, extraInfo);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[Indicator Alert Check] Error:", err);
+    }
+  }, 30000);
 
   connectBinance();
 
@@ -588,12 +678,21 @@ export async function registerRoutes(
     try {
       const schema = z.object({
         symbol: z.string().min(1),
-        targetPrice: z.coerce.number().positive(),
+        targetPrice: z.coerce.number(),
         direction: z.enum(["above", "below"]),
-        notifyTelegram: z.boolean().optional().default(false),
+        notifyTelegram: z.boolean().optional().default(true),
+        alertType: z.enum(["price", "indicator"]).optional().default("price"),
+        indicator: z.string().optional(),
+        indicatorCondition: z.string().optional(),
+        chartInterval: z.string().optional(),
       });
       const data = schema.parse(req.body);
-      const alert = await storage.createPriceAlert(req.user!.id, data);
+      if (data.alertType === "indicator") {
+        if (!data.indicator || !data.indicatorCondition || !data.chartInterval) {
+          return res.status(400).json({ message: "Indicator alerts require indicator, indicatorCondition, and chartInterval" });
+        }
+      }
+      const alert = await storage.createPriceAlert((req.user as any).id, data);
       res.status(201).json(alert);
     } catch (e) {
       if (e instanceof z.ZodError) {

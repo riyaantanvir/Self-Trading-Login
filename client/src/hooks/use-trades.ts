@@ -120,15 +120,19 @@ export function useCreateAlert() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: async (data: { symbol: string; targetPrice: number; direction: string; notifyTelegram?: boolean }) => {
+    mutationFn: async (data: { symbol: string; targetPrice: number; direction: string; notifyTelegram?: boolean; alertType?: string; indicator?: string; indicatorCondition?: string; chartInterval?: string }) => {
       const res = await apiRequest("POST", "/api/alerts", data);
       return await res.json();
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["/api/alerts"] });
+      const coin = data.symbol.replace("USDT", "");
+      const desc = data.alertType === "indicator"
+        ? `${coin}/USDT - ${data.indicator === "bollinger_bands" ? "Bollinger Band" : data.indicator} alert on ${data.chartInterval}`
+        : `${coin}/USDT ${data.direction} $${Number(data.targetPrice).toLocaleString()}`;
       toast({
         title: "Alert Created",
-        description: `Alert set for ${data.symbol.replace("USDT", "")}/USDT ${data.direction} $${Number(data.targetPrice).toLocaleString()}`,
+        description: desc,
       });
     },
     onError: (error: Error) => {

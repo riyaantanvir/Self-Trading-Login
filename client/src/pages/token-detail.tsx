@@ -19,6 +19,9 @@ import {
   BarChart3,
   ChevronDown,
   Bell,
+  Plus,
+  Activity,
+  X,
 } from "lucide-react";
 import {
   Sheet,
@@ -762,8 +765,13 @@ export default function TokenDetail() {
   const [isBuySheetOpen, setIsBuySheetOpen] = useState(false);
   const [isSellSheetOpen, setIsSellSheetOpen] = useState(false);
   const [isAlertSheetOpen, setIsAlertSheetOpen] = useState(false);
+  const [alertTab, setAlertTab] = useState<"price" | "indicator">("price");
   const [alertPrice, setAlertPrice] = useState("");
   const [alertDirection, setAlertDirection] = useState<"above" | "below">("above");
+  const [indicatorType, setIndicatorType] = useState("bollinger_bands");
+  const [indicatorCondition, setIndicatorCondition] = useState("bb_lower");
+  const [indicatorInterval, setIndicatorInterval] = useState("1h");
+  const [alertTelegram, setAlertTelegram] = useState(true);
   const createAlert = useCreateAlert();
 
   if (!ticker) {
@@ -834,15 +842,17 @@ export default function TokenDetail() {
 
           <div className="ml-auto flex items-center gap-2">
             <Button
-              variant="ghost"
-              size="icon"
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs"
               onClick={() => {
                 setAlertPrice(currentPrice.toString());
                 setIsAlertSheetOpen(true);
               }}
-              data-testid="button-set-alert"
+              data-testid="button-create-alert"
             >
-              <Bell className="w-4 h-4 text-[#f0b90b]" />
+              <Bell className="w-3.5 h-3.5 text-[#f0b90b]" />
+              Create Alert
             </Button>
             {connected ? (
               <Badge variant="outline" className="gap-1 text-[#0ecb81] border-[#0ecb81]/30 text-[10px] no-default-hover-elevate no-default-active-elevate" data-testid="badge-ws-status">
@@ -976,51 +986,196 @@ export default function TokenDetail() {
         </div>
 
         <Sheet open={isAlertSheetOpen} onOpenChange={setIsAlertSheetOpen}>
-          <SheetContent side="bottom" className="h-auto max-h-[50vh] px-0 pb-safe">
+          <SheetContent side="bottom" className="h-auto max-h-[70vh] px-0 pb-safe">
             <SheetHeader className="px-4 pb-2 border-b border-border">
-              <SheetTitle>Set Price Alert - {coinName}/USDT</SheetTitle>
+              <SheetTitle className="flex items-center gap-2">
+                <Bell className="w-4 h-4 text-[#f0b90b]" />
+                Create Alert - {coinName}/USDT
+              </SheetTitle>
             </SheetHeader>
-            <div className="p-4 space-y-3">
-              <div className="flex gap-2">
-                <Button
-                  variant={alertDirection === "above" ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => setAlertDirection("above")}
-                  data-testid="button-alert-above"
+            <div className="p-4 space-y-4">
+              <div className="flex gap-1 p-0.5 bg-muted rounded-md" data-testid="alert-type-tabs">
+                <button
+                  className={`flex-1 text-xs font-medium py-1.5 rounded-sm transition-colors ${alertTab === "price" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+                  onClick={() => setAlertTab("price")}
+                  data-testid="button-alert-tab-price"
                 >
-                  Price goes above
-                </Button>
-                <Button
-                  variant={alertDirection === "below" ? "default" : "outline"}
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => setAlertDirection("below")}
-                  data-testid="button-alert-below"
+                  Price Alert
+                </button>
+                <button
+                  className={`flex-1 text-xs font-medium py-1.5 rounded-sm transition-colors ${alertTab === "indicator" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+                  onClick={() => setAlertTab("indicator")}
+                  data-testid="button-alert-tab-indicator"
                 >
-                  Price goes below
-                </Button>
+                  Indicator Alert
+                </button>
               </div>
-              <Input
-                type="number"
-                placeholder="Target price (USDT)"
-                value={alertPrice}
-                onChange={(e) => setAlertPrice(e.target.value)}
-                data-testid="input-alert-price"
-              />
-              <div className="text-xs text-muted-foreground">
-                Current price: ${formatPrice(currentPrice)}
+
+              {alertTab === "price" && (
+                <div className="space-y-3">
+                  <div className="flex gap-2">
+                    <Button
+                      variant={alertDirection === "above" ? "default" : "outline"}
+                      size="sm"
+                      className={`flex-1 ${alertDirection === "above" ? "bg-[#0ecb81] text-white" : ""}`}
+                      onClick={() => setAlertDirection("above")}
+                      data-testid="button-alert-above"
+                    >
+                      <TrendingUp className="w-3 h-3 mr-1" />
+                      Above
+                    </Button>
+                    <Button
+                      variant={alertDirection === "below" ? "default" : "outline"}
+                      size="sm"
+                      className={`flex-1 ${alertDirection === "below" ? "bg-[#f6465d] text-white" : ""}`}
+                      onClick={() => setAlertDirection("below")}
+                      data-testid="button-alert-below"
+                    >
+                      <TrendingDown className="w-3 h-3 mr-1" />
+                      Below
+                    </Button>
+                  </div>
+                  <Input
+                    type="number"
+                    placeholder="Target price (USDT)"
+                    value={alertPrice}
+                    onChange={(e) => setAlertPrice(e.target.value)}
+                    data-testid="input-alert-price"
+                  />
+                  <div className="text-xs text-muted-foreground">
+                    Current price: ${formatPrice(currentPrice)}
+                  </div>
+                </div>
+              )}
+
+              {alertTab === "indicator" && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1.5 block">Indicator</label>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={indicatorType === "bollinger_bands" ? "default" : "outline"}
+                        size="sm"
+                        className={`flex-1 ${indicatorType === "bollinger_bands" ? "bg-[#f0b90b] text-black" : ""}`}
+                        onClick={() => setIndicatorType("bollinger_bands")}
+                        data-testid="button-indicator-bb"
+                      >
+                        <Activity className="w-3 h-3 mr-1" />
+                        Bollinger Bands
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1.5 block">Condition</label>
+                    <div className="flex gap-2">
+                      <Button
+                        variant={indicatorCondition === "bb_upper" ? "default" : "outline"}
+                        size="sm"
+                        className={`flex-1 ${indicatorCondition === "bb_upper" ? "bg-[#f6465d] text-white" : ""}`}
+                        onClick={() => setIndicatorCondition("bb_upper")}
+                        data-testid="button-condition-bb-upper"
+                      >
+                        <TrendingUp className="w-3 h-3 mr-1" />
+                        Hits Upper Band
+                      </Button>
+                      <Button
+                        variant={indicatorCondition === "bb_lower" ? "default" : "outline"}
+                        size="sm"
+                        className={`flex-1 ${indicatorCondition === "bb_lower" ? "bg-[#0ecb81] text-white" : ""}`}
+                        onClick={() => setIndicatorCondition("bb_lower")}
+                        data-testid="button-condition-bb-lower"
+                      >
+                        <TrendingDown className="w-3 h-3 mr-1" />
+                        Hits Lower Band
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-muted-foreground mb-1.5 block">Chart Timeframe</label>
+                    <div className="flex gap-1 flex-wrap">
+                      {[
+                        { value: "1m", label: "1m" },
+                        { value: "5m", label: "5m" },
+                        { value: "15m", label: "15m" },
+                        { value: "1h", label: "1H" },
+                        { value: "4h", label: "4H" },
+                        { value: "1d", label: "1D" },
+                        { value: "1w", label: "1W" },
+                      ].map(tf => (
+                        <Button
+                          key={tf.value}
+                          variant={indicatorInterval === tf.value ? "secondary" : "ghost"}
+                          size="sm"
+                          className={`text-xs h-7 px-3 toggle-elevate ${indicatorInterval === tf.value ? "toggle-elevated" : ""}`}
+                          onClick={() => setIndicatorInterval(tf.value)}
+                          data-testid={`button-tf-${tf.value}`}
+                        >
+                          {tf.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="text-xs text-muted-foreground bg-muted/50 p-2.5 rounded-md">
+                    <Activity className="w-3 h-3 inline mr-1" />
+                    Alert when {coinName}/USDT {indicatorCondition === "bb_upper" ? "hits the upper" : "hits the lower"} Bollinger Band on the {indicatorInterval} chart (20-period, 2 std dev)
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-between p-3 border border-border rounded-md">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 rounded-full bg-[#0088cc] flex items-center justify-center">
+                    <span className="text-white text-[10px] font-bold">TG</span>
+                  </div>
+                  <div>
+                    <div className="text-xs font-medium">Notify on Telegram</div>
+                    <div className="text-[10px] text-muted-foreground">Send alert to your Telegram when triggered</div>
+                  </div>
+                </div>
+                <button
+                  className={`w-10 h-5 rounded-full transition-colors relative ${alertTelegram ? "bg-[#0088cc]" : "bg-muted"}`}
+                  onClick={() => setAlertTelegram(!alertTelegram)}
+                  data-testid="toggle-alert-telegram"
+                >
+                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${alertTelegram ? "left-5.5 translate-x-0.5" : "left-0.5"}`} />
+                </button>
               </div>
+
               <Button
-                className="w-full"
-                disabled={createAlert.isPending || !alertPrice}
+                className="w-full bg-[#0ecb81] text-white font-bold"
+                disabled={createAlert.isPending || (alertTab === "price" && !alertPrice)}
                 onClick={() => {
-                  createAlert.mutate(
-                    { symbol, targetPrice: parseFloat(alertPrice), direction: alertDirection },
-                    { onSuccess: () => setIsAlertSheetOpen(false) }
-                  );
+                  if (alertTab === "price") {
+                    createAlert.mutate(
+                      {
+                        symbol,
+                        targetPrice: parseFloat(alertPrice),
+                        direction: alertDirection,
+                        alertType: "price",
+                        notifyTelegram: alertTelegram,
+                      },
+                      { onSuccess: () => setIsAlertSheetOpen(false) }
+                    );
+                  } else {
+                    createAlert.mutate(
+                      {
+                        symbol,
+                        targetPrice: 0,
+                        direction: indicatorCondition === "bb_upper" ? "above" : "below",
+                        alertType: "indicator",
+                        indicator: indicatorType,
+                        indicatorCondition,
+                        chartInterval: indicatorInterval,
+                        notifyTelegram: alertTelegram,
+                      },
+                      { onSuccess: () => setIsAlertSheetOpen(false) }
+                    );
+                  }
                 }}
-                data-testid="button-confirm-price-alert"
+                data-testid="button-confirm-alert"
               >
                 {createAlert.isPending ? "Creating..." : "Create Alert"}
               </Button>

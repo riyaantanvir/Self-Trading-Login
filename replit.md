@@ -46,7 +46,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `POST /api/watchlist` - Add coin to watchlist (body: { symbol })
 - `DELETE /api/watchlist/:symbol` - Remove coin from watchlist
 - `GET /api/alerts` - User's price alerts
-- `POST /api/alerts` - Create price alert (body: { symbol, targetPrice, direction, notifyTelegram })
+- `POST /api/alerts` - Create alert (body: { symbol, targetPrice, direction, notifyTelegram, alertType?, indicator?, indicatorCondition?, chartInterval? })
 - `DELETE /api/alerts/:id` - Delete price alert
 - `GET /api/alerts/triggered` - User's triggered alerts
 - `POST /api/user/telegram` - Save Telegram bot token and chat ID

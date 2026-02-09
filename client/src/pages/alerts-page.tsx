@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Bell, BellOff, Trash2, ArrowUp, ArrowDown, Plus, X, Check, Send, Settings } from "lucide-react";
+import { Bell, BellOff, Trash2, ArrowUp, ArrowDown, Plus, X, Check, Send, Settings, Activity } from "lucide-react";
 import { SiTelegram } from "react-icons/si";
 
 export default function AlertsPage() {
@@ -72,7 +72,7 @@ export default function AlertsPage() {
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <Bell className="w-5 h-5 text-[#f0b90b]" />
-            <h1 className="text-xl font-bold" data-testid="text-alerts-title">Price Alerts</h1>
+            <h1 className="text-xl font-bold" data-testid="text-alerts-title">Alerts</h1>
           </div>
           <div className="flex items-center gap-2">
             <Button
@@ -291,7 +291,8 @@ export default function AlertsPage() {
             activeAlerts.map((alert: any) => {
               const coin = alert.symbol.replace("USDT", "");
               const currentPrice = getCurrentPrice(alert.symbol);
-              const progress = currentPrice
+              const isIndicator = alert.alertType === "indicator";
+              const progress = !isIndicator && currentPrice
                 ? alert.direction === "above"
                   ? Math.min(100, (currentPrice / alert.targetPrice) * 100)
                   : Math.min(100, (alert.targetPrice / currentPrice) * 100)
@@ -301,22 +302,32 @@ export default function AlertsPage() {
                 <Card key={alert.id} className="p-3" data-testid={`card-alert-${alert.id}`}>
                   <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div className="flex items-center gap-3">
-                      <div className={`p-1.5 rounded-md ${alert.direction === "above" ? "bg-[#0ecb81]/10" : "bg-[#f6465d]/10"}`}>
-                        {alert.direction === "above" ? (
+                      <div className={`p-1.5 rounded-md ${isIndicator ? "bg-[#f0b90b]/10" : alert.direction === "above" ? "bg-[#0ecb81]/10" : "bg-[#f6465d]/10"}`}>
+                        {isIndicator ? (
+                          <Activity className="w-4 h-4 text-[#f0b90b]" />
+                        ) : alert.direction === "above" ? (
                           <ArrowUp className="w-4 h-4 text-[#0ecb81]" />
                         ) : (
                           <ArrowDown className="w-4 h-4 text-[#f6465d]" />
                         )}
                       </div>
                       <div>
-                        <div className="font-medium text-sm flex items-center gap-2">
+                        <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
                           {coin}/USDT
+                          {isIndicator && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#f0b90b]/10 text-[#f0b90b] font-mono">
+                              BB {alert.indicatorCondition === "bb_upper" ? "Upper" : "Lower"} | {alert.chartInterval}
+                            </span>
+                          )}
                           {alert.notifyTelegram && (
                             <SiTelegram className="w-3 h-3 text-[#26A5E4]" />
                           )}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {alert.direction === "above" ? "Above" : "Below"} ${Number(alert.targetPrice).toLocaleString()}
+                          {isIndicator
+                            ? `Alert when price hits ${alert.indicatorCondition === "bb_upper" ? "upper" : "lower"} Bollinger Band on ${alert.chartInterval} chart`
+                            : `${alert.direction === "above" ? "Above" : "Below"} $${Number(alert.targetPrice).toLocaleString()}`
+                          }
                         </div>
                       </div>
                     </div>
@@ -337,12 +348,14 @@ export default function AlertsPage() {
                       </Button>
                     </div>
                   </div>
-                  <div className="mt-2 h-1 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${alert.direction === "above" ? "bg-[#0ecb81]" : "bg-[#f6465d]"}`}
-                      style={{ width: `${progress}%` }}
-                    />
-                  </div>
+                  {!isIndicator && (
+                    <div className="mt-2 h-1 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${alert.direction === "above" ? "bg-[#0ecb81]" : "bg-[#f6465d]"}`}
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                  )}
                 </Card>
               );
             })
@@ -354,6 +367,7 @@ export default function AlertsPage() {
             <div className="text-sm font-medium text-muted-foreground">Triggered ({triggeredAlerts.length})</div>
             {triggeredAlerts.map((alert: any) => {
               const coin = alert.symbol.replace("USDT", "");
+              const isIndicator = alert.alertType === "indicator";
               return (
                 <Card key={alert.id} className="p-3 opacity-60" data-testid={`card-triggered-${alert.id}`}>
                   <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -362,14 +376,22 @@ export default function AlertsPage() {
                         <BellOff className="w-4 h-4 text-muted-foreground" />
                       </div>
                       <div>
-                        <div className="font-medium text-sm flex items-center gap-2">
+                        <div className="font-medium text-sm flex items-center gap-2 flex-wrap">
                           {coin}/USDT
+                          {isIndicator && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">
+                              BB {alert.indicatorCondition === "bb_upper" ? "Upper" : "Lower"} | {alert.chartInterval}
+                            </span>
+                          )}
                           {alert.notifyTelegram && (
                             <SiTelegram className="w-3 h-3 text-[#26A5E4]" />
                           )}
                         </div>
                         <div className="text-xs text-muted-foreground">
-                          {alert.direction === "above" ? "Above" : "Below"} ${Number(alert.targetPrice).toLocaleString()}
+                          {isIndicator
+                            ? `BB ${alert.indicatorCondition === "bb_upper" ? "Upper" : "Lower"} Band hit on ${alert.chartInterval}`
+                            : `${alert.direction === "above" ? "Above" : "Below"} $${Number(alert.targetPrice).toLocaleString()}`
+                          }
                           {alert.triggeredAt && (
                             <span className="ml-2">
                               {new Date(alert.triggeredAt).toLocaleString()}
