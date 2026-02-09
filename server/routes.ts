@@ -214,6 +214,10 @@ export async function registerRoutes(
       const total = data.quantity * data.price;
       const user = req.user!;
 
+      if (total < 5) {
+        return res.status(400).json({ message: "Minimum order amount is 5 USDT" });
+      }
+
       if (data.type === "buy") {
         if (user.balance < total) {
           return res.status(400).json({ message: "Insufficient balance" });

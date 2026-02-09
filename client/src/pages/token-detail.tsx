@@ -2,24 +2,12 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useRoute, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
-import { useCreateTrade, useTickers } from "@/hooks/use-trades";
+import { useCreateTrade, useTickers, usePortfolio } from "@/hooks/use-trades";
 import { useAuth } from "@/hooks/use-auth";
 import { LayoutShell } from "@/components/layout-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { createChart, CandlestickSeries, HistogramSeries, type IChartApi } from "lightweight-charts";
 import {
   ArrowLeft,
@@ -50,11 +38,6 @@ const INTERVALS = [
   { label: "1W", value: "1w" },
   { label: "1M", value: "1M" },
 ];
-
-const tradeFormSchema = z.object({
-  quantity: z.coerce.number().positive("Quantity must be greater than 0"),
-});
-type TradeFormValues = z.infer<typeof tradeFormSchema>;
 
 function formatPrice(price: number) {
   if (price >= 1000) return price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -238,38 +221,98 @@ function OrderBookSimulated({ price, symbol }: { price: number; symbol: string }
 
 function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: number }) {
   const [type, setType] = useState<"buy" | "sell">("buy");
+  const [inputMode, setInputMode] = useState<"token" | "usdt">("usdt");
+  const [amount, setAmount] = useState("");
+  const [sliderValue, setSliderValue] = useState(0);
   const createTrade = useCreateTrade();
   const { user } = useAuth();
+  const { data: portfolioData } = usePortfolio();
   const coinName = symbol.replace("USDT", "");
 
-  const form = useForm<TradeFormValues>({
-    resolver: zodResolver(tradeFormSchema),
-    defaultValues: { quantity: 0 },
-  });
+  const holding = (portfolioData as any[] | undefined)?.find((p: any) => p.symbol === symbol);
+  const holdingQty = holding ? Number(holding.quantity) : 0;
 
-  const watchedQuantity = form.watch("quantity");
-  const numQuantity = Number(watchedQuantity) || 0;
-  const total = numQuantity * currentPrice;
+  const numAmount = Number(amount) || 0;
 
-  function onSubmit(data: TradeFormValues) {
+  const tokenQty = inputMode === "token" ? numAmount : (currentPrice > 0 ? numAmount / currentPrice : 0);
+  const usdtTotal = inputMode === "usdt" ? numAmount : numAmount * currentPrice;
+
+  const minUsdt = 5;
+  const isBelowMin = usdtTotal > 0 && usdtTotal < minUsdt;
+
+  const maxBuyUsdt = user ? Number(user.balance) : 0;
+  const maxSellUsdt = holdingQty * currentPrice;
+
+  function handlePercentClick(pct: number) {
+    if (type === "buy") {
+      const usdtAmt = maxBuyUsdt * (pct / 100);
+      if (inputMode === "usdt") {
+        setAmount(usdtAmt.toFixed(2));
+      } else {
+        const tokenAmt = currentPrice > 0 ? usdtAmt / currentPrice : 0;
+        setAmount(tokenAmt.toFixed(6));
+      }
+    } else {
+      const tokenAmt = holdingQty * (pct / 100);
+      if (inputMode === "token") {
+        setAmount(tokenAmt.toFixed(6));
+      } else {
+        const usdtAmt = tokenAmt * currentPrice;
+        setAmount(usdtAmt.toFixed(2));
+      }
+    }
+    setSliderValue(pct);
+  }
+
+  function handleSliderChange(val: number) {
+    setSliderValue(val);
+    handlePercentClick(val);
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (tokenQty <= 0 || isBelowMin) return;
     createTrade.mutate(
-      { symbol, type, quantity: data.quantity, price: currentPrice },
-      { onSuccess: () => form.reset({ quantity: 0 }) }
+      { symbol, type, quantity: parseFloat(tokenQty.toFixed(8)), price: currentPrice },
+      {
+        onSuccess: () => {
+          setAmount("");
+          setSliderValue(0);
+        },
+      }
     );
+  }
+
+  function handleTypeChange(newType: "buy" | "sell") {
+    setType(newType);
+    setAmount("");
+    setSliderValue(0);
+  }
+
+  function toggleInputMode() {
+    if (numAmount > 0 && currentPrice > 0) {
+      if (inputMode === "usdt") {
+        setAmount((numAmount / currentPrice).toFixed(6));
+      } else {
+        setAmount((numAmount * currentPrice).toFixed(2));
+      }
+    }
+    setInputMode(prev => prev === "usdt" ? "token" : "usdt");
   }
 
   return (
     <div data-testid="trade-panel">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
         <span className="text-xs text-muted-foreground font-medium">Spot</span>
+        <span className="text-[10px] text-muted-foreground">Market Price</span>
       </div>
       <div className="p-3 space-y-3">
         <div className="flex gap-1">
           <Button
             variant={type === "buy" ? "default" : "ghost"}
             size="sm"
-            className={`flex-1 text-xs toggle-elevate ${type === "buy" ? "toggle-elevated" : ""}`}
-            onClick={() => setType("buy")}
+            className={`flex-1 text-xs toggle-elevate ${type === "buy" ? "toggle-elevated bg-[#0ecb81] text-white border-[#0ecb81]" : ""}`}
+            onClick={() => handleTypeChange("buy")}
             data-testid="button-buy-tab"
           >
             Buy
@@ -277,97 +320,148 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
           <Button
             variant={type === "sell" ? "destructive" : "ghost"}
             size="sm"
-            className={`flex-1 text-xs toggle-elevate ${type === "sell" ? "toggle-elevated" : ""}`}
-            onClick={() => setType("sell")}
+            className={`flex-1 text-xs toggle-elevate ${type === "sell" ? "toggle-elevated bg-[#f6465d] text-white border-[#f6465d]" : ""}`}
+            onClick={() => handleTypeChange("sell")}
             data-testid="button-sell-tab"
           >
             Sell
           </Button>
         </div>
 
-        {user && (
-          <div className="text-xs text-muted-foreground">
-            Available: <span className="text-foreground font-mono">${Number(user.balance).toLocaleString(undefined, { maximumFractionDigits: 2 })} USDT</span>
-          </div>
-        )}
-
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-2">
-            <div>
-              <label className="text-[10px] text-muted-foreground mb-0.5 block">Price (USDT)</label>
-              <Input
-                value={`${formatPrice(currentPrice)}`}
-                disabled
-                className="font-mono text-xs bg-background/50 border-border h-8"
-                data-testid="input-price"
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="quantity"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-[10px] text-muted-foreground">Amount ({coinName})</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="any"
-                      min="0"
-                      placeholder="0.00"
-                      className="font-mono text-xs bg-background/50 border-border h-8"
-                      data-testid="input-quantity"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+        <div>
+          <label className="text-[10px] text-muted-foreground mb-0.5 block">Price</label>
+          <div className="flex items-center gap-2">
+            <Input
+              value={`${formatPrice(currentPrice)}`}
+              disabled
+              className="font-mono text-xs bg-background/50 border-border h-8 flex-1"
+              data-testid="input-price"
             />
+            <span className="text-[10px] text-muted-foreground whitespace-nowrap">Market Price</span>
+          </div>
+        </div>
 
-            <div className="grid grid-cols-4 gap-1">
-              {[25, 50, 75, 100].map(pct => (
-                <Button
-                  key={pct}
+        <form onSubmit={handleSubmit} className="space-y-2">
+          <div>
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="text-[10px] text-muted-foreground">
+                Total
+              </label>
+              <span className="text-[10px] text-muted-foreground">
+                Minimum 5 <button
                   type="button"
-                  variant="outline"
-                  size="sm"
-                  className="text-[10px] h-6"
-                  onClick={() => {
-                    if (user && currentPrice > 0) {
-                      const maxQty = (user.balance * (pct / 100)) / currentPrice;
-                      form.setValue("quantity", parseFloat(maxQty.toFixed(6)));
-                    }
-                  }}
-                  data-testid={`button-pct-${pct}`}
+                  className="font-medium text-foreground cursor-pointer"
+                  onClick={toggleInputMode}
+                  data-testid="button-toggle-input-mode"
                 >
-                  {pct}%
-                </Button>
-              ))}
-            </div>
-
-            <div className="flex justify-between text-xs py-1 border-t border-border">
-              <span className="text-muted-foreground">Total</span>
-              <span className="font-mono" data-testid="text-total">
-                ${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT
+                  {inputMode === "usdt" ? "USDT" : coinName} &#9662;
+                </button>
               </span>
             </div>
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              value={amount}
+              onChange={(e) => {
+                setAmount(e.target.value);
+                setSliderValue(0);
+              }}
+              placeholder={inputMode === "usdt" ? "Min 5 USDT" : `0.00 ${coinName}`}
+              className="font-mono text-xs bg-background/50 border-border h-8"
+              data-testid="input-amount"
+            />
+            {isBelowMin && (
+              <p className="text-[10px] text-[#f6465d] mt-0.5" data-testid="text-min-order-error">Minimum order is 5 USDT</p>
+            )}
+          </div>
 
-            <Button
-              type="submit"
-              disabled={createTrade.isPending || numQuantity <= 0}
-              variant={type === "buy" ? "default" : "destructive"}
-              className="w-full text-xs font-bold"
-              data-testid="button-submit-trade"
-            >
-              {createTrade.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                `${type === "buy" ? "Buy" : "Sell"} ${coinName}`
-              )}
-            </Button>
-          </form>
-        </Form>
+          <div className="relative px-1">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={sliderValue}
+              onChange={(e) => handleSliderChange(Number(e.target.value))}
+              className="w-full h-1 appearance-none rounded-full cursor-pointer accent-[#0ecb81]"
+              style={{
+                background: `linear-gradient(to right, ${type === "buy" ? "#0ecb81" : "#f6465d"} ${sliderValue}%, hsl(220, 10%, 20%) ${sliderValue}%)`,
+              }}
+              data-testid="slider-amount"
+            />
+            <div className="flex justify-between mt-1">
+              {[0, 25, 50, 75, 100].map((mark) => (
+                <button
+                  key={mark}
+                  type="button"
+                  className={`w-2 h-2 rounded-full border transition-colors ${
+                    sliderValue >= mark
+                      ? type === "buy" ? "bg-[#0ecb81] border-[#0ecb81]" : "bg-[#f6465d] border-[#f6465d]"
+                      : "bg-background border-border"
+                  }`}
+                  onClick={() => handlePercentClick(mark)}
+                  data-testid={`button-slider-${mark}`}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1 text-xs py-1 border-t border-border">
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground">Avbl</span>
+              <span className="font-mono text-foreground" data-testid="text-available">
+                {type === "buy" ? (
+                  <>{maxBuyUsdt.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDT</>
+                ) : (
+                  <>{holdingQty.toFixed(6)} {coinName}</>
+                )}
+              </span>
+            </div>
+            <div className="flex justify-between gap-2">
+              <span className="text-muted-foreground cursor-pointer" data-testid="text-max-label">
+                {type === "buy" ? "Max Buy" : "Max Sell"}
+              </span>
+              <span className="font-mono text-foreground" data-testid="text-max-value">
+                {type === "buy" ? (
+                  <>{currentPrice > 0 ? (maxBuyUsdt / currentPrice).toFixed(6) : "0.000000"} {coinName}</>
+                ) : (
+                  <>{maxSellUsdt.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDT</>
+                )}
+              </span>
+            </div>
+            {numAmount > 0 && (
+              <div className="flex justify-between gap-2">
+                <span className="text-muted-foreground">
+                  {inputMode === "usdt" ? `Amount (${coinName})` : "Total (USDT)"}
+                </span>
+                <span className="font-mono text-foreground" data-testid="text-converted">
+                  {inputMode === "usdt"
+                    ? `${tokenQty.toFixed(6)} ${coinName}`
+                    : `${usdtTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`
+                  }
+                </span>
+              </div>
+            )}
+          </div>
+
+          <Button
+            type="submit"
+            disabled={createTrade.isPending || tokenQty <= 0 || isBelowMin}
+            className={`w-full text-xs font-bold text-white ${
+              type === "buy"
+                ? "bg-[#0ecb81] border-[#0ecb81]"
+                : "bg-[#f6465d] border-[#f6465d]"
+            }`}
+            data-testid="button-submit-trade"
+          >
+            {createTrade.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              `${type === "buy" ? "Buy" : "Sell"} ${coinName}`
+            )}
+          </Button>
+        </form>
       </div>
     </div>
   );
