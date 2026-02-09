@@ -1,52 +1,44 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Redirect } from "wouter";
 import { Loader2, TrendingUp } from "lucide-react";
-
-const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
-  password: z.string().min(1, "Password is required"),
-});
-type LoginForm = z.infer<typeof loginSchema>;
-
-const signupSchema = z.object({
-  email: z.string().email("Enter a valid email"),
-  username: z.string().min(3, "Username must be at least 3 characters"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-});
-type SignupForm = z.infer<typeof signupSchema>;
 
 export default function AuthPage() {
   const { user, loginMutation, registerMutation } = useAuth();
   const [activeTab, setActiveTab] = useState<"login" | "signup">("login");
 
-  const loginForm = useForm<LoginForm>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: { username: "", password: "" },
-  });
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
 
-  const signupForm = useForm<SignupForm>({
-    resolver: zodResolver(signupSchema),
-    defaultValues: { email: "", username: "", password: "" },
-  });
+  const [signupUsername, setSignupUsername] = useState("");
+  const [signupPassword, setSignupPassword] = useState("");
+  const [signupError, setSignupError] = useState("");
 
   if (user) {
     return <Redirect to="/" />;
   }
 
-  function onLogin(data: LoginForm) {
-    loginMutation.mutate(data);
+  function handleLogin(e: React.FormEvent) {
+    e.preventDefault();
+    if (!loginUsername || !loginPassword) return;
+    loginMutation.mutate({ username: loginUsername, password: loginPassword });
   }
 
-  function onSignup(data: SignupForm) {
-    registerMutation.mutate(data);
+  function handleSignup(e: React.FormEvent) {
+    e.preventDefault();
+    if (signupUsername.length < 3) {
+      setSignupError("Username must be at least 3 characters");
+      return;
+    }
+    if (signupPassword.length < 6) {
+      setSignupError("Password must be at least 6 characters");
+      return;
+    }
+    setSignupError("");
+    registerMutation.mutate({ username: signupUsername, password: signupPassword, email: "" });
   }
 
   return (
@@ -61,12 +53,12 @@ export default function AuthPage() {
         </div>
 
         <Card className="border-border">
-          <CardHeader className="pb-3 px-6">
+          <CardHeader className="pb-3">
             <div className="flex gap-4">
               <button
                 type="button"
                 onClick={() => setActiveTab("login")}
-                className={`text-base font-semibold pb-1 cursor-pointer z-10 ${
+                className={`text-base font-semibold pb-1 cursor-pointer ${
                   activeTab === "login"
                     ? "text-foreground border-b-2 border-[#0ecb81]"
                     : "text-muted-foreground"
@@ -78,7 +70,7 @@ export default function AuthPage() {
               <button
                 type="button"
                 onClick={() => setActiveTab("signup")}
-                className={`text-base font-semibold pb-1 cursor-pointer z-10 ${
+                className={`text-base font-semibold pb-1 cursor-pointer ${
                   activeTab === "signup"
                     ? "text-foreground border-b-2 border-[#0ecb81]"
                     : "text-muted-foreground"
@@ -89,136 +81,78 @@ export default function AuthPage() {
               </button>
             </div>
           </CardHeader>
-          <CardContent className="px-6">
+          <CardContent>
             {activeTab === "login" ? (
-              <Form {...loginForm}>
-                <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
-                  <FormField
-                    control={loginForm.control}
-                    name="username"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Username</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Enter username"
-                            {...field}
-                            className="bg-background border-border"
-                            data-testid="input-login-username"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Username</label>
+                  <Input
+                    value={loginUsername}
+                    onChange={(e) => setLoginUsername(e.target.value)}
+                    placeholder="Enter username"
+                    data-testid="input-login-username"
                   />
-                  <FormField
-                    control={loginForm.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="Enter password"
-                            {...field}
-                            className="bg-background border-border"
-                            data-testid="input-login-password"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Password</label>
+                  <Input
+                    type="password"
+                    value={loginPassword}
+                    onChange={(e) => setLoginPassword(e.target.value)}
+                    placeholder="Enter password"
+                    data-testid="input-login-password"
                   />
-                  <Button
-                    type="submit"
-                    className="w-full bg-[#0ecb81] text-white font-semibold"
-                    disabled={loginMutation.isPending}
-                    data-testid="button-login"
-                  >
-                    {loginMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      "Log In"
-                    )}
-                  </Button>
-                </form>
-              </Form>
+                </div>
+                <Button
+                  type="submit"
+                  className="w-full bg-[#0ecb81] text-white font-semibold"
+                  disabled={loginMutation.isPending}
+                  data-testid="button-login"
+                >
+                  {loginMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Log In"
+                  )}
+                </Button>
+              </form>
             ) : (
-              <Form {...signupForm}>
-                <form onSubmit={signupForm.handleSubmit(onSignup)} className="space-y-4" autoComplete="off">
-                  <FormField
-                    control={signupForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Enter email"
-                            autoComplete="off"
-                            {...field}
-                            className="bg-background border-border relative z-20"
-                            data-testid="input-signup-email"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+              <form onSubmit={handleSignup} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Username</label>
+                  <Input
+                    value={signupUsername}
+                    onChange={(e) => setSignupUsername(e.target.value)}
+                    placeholder="Choose a username"
+                    data-testid="input-signup-username"
                   />
-                  <FormField
-                    control={signupForm.control}
-                    name="username"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Username</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Choose a username"
-                            autoComplete="off"
-                            {...field}
-                            className="bg-background border-border relative z-20"
-                            data-testid="input-signup-username"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Password</label>
+                  <Input
+                    type="password"
+                    value={signupPassword}
+                    onChange={(e) => setSignupPassword(e.target.value)}
+                    placeholder="Min 6 characters"
+                    data-testid="input-signup-password"
                   />
-                  <FormField
-                    control={signupForm.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="Min 6 characters"
-                            autoComplete="off"
-                            {...field}
-                            className="bg-background border-border relative z-20"
-                            data-testid="input-signup-password"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button
-                    type="submit"
-                    className="w-full bg-[#0ecb81] text-white font-semibold"
-                    disabled={registerMutation.isPending}
-                    data-testid="button-signup"
-                  >
-                    {registerMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      "Create Account"
-                    )}
-                  </Button>
-                </form>
-              </Form>
+                </div>
+                {signupError && (
+                  <p className="text-sm text-destructive" data-testid="text-signup-error">{signupError}</p>
+                )}
+                <Button
+                  type="submit"
+                  className="w-full bg-[#0ecb81] text-white font-semibold"
+                  disabled={registerMutation.isPending}
+                  data-testid="button-signup"
+                >
+                  {registerMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    "Create Account"
+                  )}
+                </Button>
+              </form>
             )}
 
             {activeTab === "login" && (
@@ -235,6 +169,7 @@ export default function AuthPage() {
                 <p>
                   Don't have an account?{" "}
                   <button
+                    type="button"
                     onClick={() => setActiveTab("signup")}
                     className="text-[#0ecb81] font-medium"
                     data-testid="link-switch-to-signup"
@@ -246,6 +181,7 @@ export default function AuthPage() {
                 <p>
                   Already have an account?{" "}
                   <button
+                    type="button"
                     onClick={() => setActiveTab("login")}
                     className="text-[#0ecb81] font-medium"
                     data-testid="link-switch-to-login"

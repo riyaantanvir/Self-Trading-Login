@@ -82,9 +82,9 @@ export function setupAuth(app: Express) {
 
   app.post("/api/register", async (req, res, next) => {
     try {
-      const { username, email, password } = req.body;
-      if (!username || !email || !password) {
-        return res.status(400).json({ message: "Username, email, and password are required" });
+      const { username, password, email } = req.body;
+      if (!username || !password) {
+        return res.status(400).json({ message: "Username and password are required" });
       }
       if (password.length < 6) {
         return res.status(400).json({ message: "Password must be at least 6 characters" });
@@ -93,14 +93,16 @@ export function setupAuth(app: Express) {
       if (existing) {
         return res.status(400).json({ message: "Username already taken" });
       }
-      const [existingEmail] = await db.select().from(users).where(eq(users.email, email));
-      if (existingEmail) {
-        return res.status(400).json({ message: "Email already registered" });
+      if (email) {
+        const [existingEmail] = await db.select().from(users).where(eq(users.email, email));
+        if (existingEmail) {
+          return res.status(400).json({ message: "Email already registered" });
+        }
       }
       const hashedPassword = await hashPassword(password);
       const user = await storage.createUser({
         username,
-        email,
+        email: email || "",
         password: hashedPassword,
         isAdmin: false,
         balance: 100000,
