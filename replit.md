@@ -33,6 +33,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 ## API Endpoints
 - `GET /api/market/tickers` - Live cached ticker data (from Binance WS)
 - `GET /api/market/klines` - Candlestick chart data from Binance (params: symbol, interval, limit)
+- `GET /api/market/news` - Crypto news feed from CryptoCompare (cached 3min, returns 50 articles with title, body, source, image, timestamp)
 - `WS /ws/market` - WebSocket relay for real-time ticker updates
 - `POST /api/login` - Login
 - `POST /api/logout` - Logout
@@ -71,6 +72,9 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Cancel returns reserved balance (buy) or holdings (sell)
 
 ## Recent Changes
+- Feb 2026: Added real-time crypto news feed tab on Markets page (CryptoCompare API, featured article + grid layout, 3min server cache, auto-refresh)
+- Feb 2026: Fixed stop-limit order execution (two-phase: stop triggers first, then becomes limit order; added stopTriggered DB field)
+- Feb 2026: Chart remembers last selected candle interval via localStorage
 - Feb 2026: Added advanced order types (Market, Limit, Stop Limit, Stop Market) with pending order management, server-side execution, and cancel support
 - Feb 2026: Added Fear & Greed Index tab on Markets page with visual gauge, today/yesterday/7d comparison, and 30-day history bar chart (data from alternative.me API, cached 5min server-side)
 - Feb 2026: Added RSI and MACD indicators with separate sub-panels and time-synced scrolling

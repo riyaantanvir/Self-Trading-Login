@@ -884,6 +884,9 @@ export async function registerRoutes(
   let fngCache: { data: any; timestamp: number } | null = null;
   const FNG_CACHE_TTL = 5 * 60 * 1000;
 
+  let newsCache: { data: any; timestamp: number } | null = null;
+  const NEWS_CACHE_TTL = 3 * 60 * 1000;
+
   app.get("/api/market/fear-greed", async (_req, res) => {
     try {
       if (fngCache && Date.now() - fngCache.timestamp < FNG_CACHE_TTL) {
@@ -898,6 +901,35 @@ export async function registerRoutes(
       console.error("[FNG] Error fetching Fear & Greed Index:", e);
       if (fngCache) return res.json(fngCache.data);
       res.status(500).json({ message: "Failed to fetch Fear & Greed Index" });
+    }
+  });
+
+  app.get("/api/market/news", async (_req, res) => {
+    try {
+      if (newsCache && Date.now() - newsCache.timestamp < NEWS_CACHE_TTL) {
+        return res.json(newsCache.data);
+      }
+      const response = await fetch(
+        "https://min-api.cryptocompare.com/data/v2/news/?lang=EN&sortOrder=popular"
+      );
+      if (!response.ok) throw new Error("Failed to fetch crypto news");
+      const json = await response.json();
+      const articles = (json.Data || []).slice(0, 50).map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        body: item.body?.substring(0, 300) || "",
+        url: item.url,
+        imageUrl: item.imageurl,
+        source: item.source_info?.name || item.source || "Unknown",
+        publishedAt: item.published_on,
+        categories: item.categories || "",
+      }));
+      newsCache = { data: articles, timestamp: Date.now() };
+      res.json(articles);
+    } catch (e) {
+      console.error("[News] Error fetching crypto news:", e);
+      if (newsCache) return res.json(newsCache.data);
+      res.status(500).json({ message: "Failed to fetch news" });
     }
   });
 

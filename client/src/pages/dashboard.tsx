@@ -13,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Loader2, Search, ArrowUpDown, Wifi, WifiOff, MoreVertical, Star, Eye, Gauge } from "lucide-react";
+import { Loader2, Search, ArrowUpDown, Wifi, WifiOff, MoreVertical, Star, Eye, Gauge, Newspaper, ExternalLink, Clock } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 interface Ticker {
@@ -245,6 +245,145 @@ function FearGreedTab() {
   );
 }
 
+interface NewsArticle {
+  id: string;
+  title: string;
+  body: string;
+  url: string;
+  imageUrl: string;
+  source: string;
+  publishedAt: number;
+  categories: string;
+}
+
+function formatTimeAgo(timestamp: number): string {
+  const seconds = Math.floor(Date.now() / 1000 - timestamp);
+  if (seconds < 60) return "Just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function NewsTab() {
+  const { data: articles, isLoading } = useQuery<NewsArticle[]>({
+    queryKey: ["/api/market/news"],
+    refetchInterval: 3 * 60 * 1000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!articles || articles.length === 0) {
+    return (
+      <div className="text-center py-16 text-muted-foreground text-sm">
+        No news available at the moment. Please try again later.
+      </div>
+    );
+  }
+
+  const featured = articles[0];
+  const rest = articles.slice(1);
+
+  return (
+    <div className="space-y-4">
+      <a
+        href={featured.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block"
+        data-testid="link-featured-news"
+      >
+        <Card className="overflow-hidden hover-elevate">
+          <div className="flex flex-col md:flex-row">
+            {featured.imageUrl && (
+              <div className="md:w-80 h-48 md:h-auto shrink-0 overflow-hidden">
+                <img
+                  src={featured.imageUrl}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                />
+              </div>
+            )}
+            <CardContent className="p-4 flex flex-col justify-between flex-1">
+              <div>
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <Badge variant="secondary" className="text-[10px]" data-testid="badge-featured-source">{featured.source}</Badge>
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {formatTimeAgo(featured.publishedAt)}
+                  </span>
+                </div>
+                <h3 className="text-base font-semibold text-foreground leading-tight mb-2" data-testid="text-featured-title">
+                  {featured.title}
+                </h3>
+                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+                  {featured.body}
+                </p>
+              </div>
+              <div className="flex items-center gap-1 mt-3 text-xs text-muted-foreground">
+                Read more <ExternalLink className="w-3 h-3" />
+              </div>
+            </CardContent>
+          </div>
+        </Card>
+      </a>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {rest.map((article) => (
+          <a
+            key={article.id}
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid={`link-news-${article.id}`}
+          >
+            <Card className="h-full hover-elevate">
+              <div className="flex h-full">
+                {article.imageUrl && (
+                  <div className="w-24 shrink-0 overflow-hidden rounded-l-md">
+                    <img
+                      src={article.imageUrl}
+                      alt=""
+                      className="w-full h-full object-cover"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                    />
+                  </div>
+                )}
+                <CardContent className="p-3 flex flex-col justify-between flex-1 min-w-0">
+                  <div>
+                    <h4 className="text-xs font-medium text-foreground leading-tight line-clamp-2 mb-1.5" data-testid={`text-news-title-${article.id}`}>
+                      {article.title}
+                    </h4>
+                    <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">
+                      {article.body}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    <span className="text-[10px] text-muted-foreground">{article.source}</span>
+                    <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <Clock className="w-2.5 h-2.5" />
+                      {formatTimeAgo(article.publishedAt)}
+                    </span>
+                  </div>
+                </CardContent>
+              </div>
+            </Card>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const { data: tickers, isLoading } = useTickers();
   const { connected, priceFlashes } = useBinanceWebSocket();
@@ -254,7 +393,7 @@ export default function Dashboard() {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<"symbol" | "lastPrice" | "priceChangePercent" | "quoteVolume">("quoteVolume");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [activeTab, setActiveTab] = useState<"all" | "watchlist" | "feargreed">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "watchlist" | "feargreed" | "news">("all");
   const [, navigate] = useLocation();
 
   const watchlistSymbols = useMemo(() => {
@@ -339,7 +478,7 @@ export default function Dashboard() {
               Real-time prices from Binance
             </p>
           </div>
-          {activeTab !== "feargreed" && (
+          {(activeTab === "all" || activeTab === "watchlist") && (
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -389,10 +528,22 @@ export default function Dashboard() {
             <Gauge className="w-3 h-3" />
             Fear & Greed
           </Button>
+          <Button
+            variant={activeTab === "news" ? "secondary" : "ghost"}
+            size="sm"
+            className={`text-xs gap-1 toggle-elevate ${activeTab === "news" ? "toggle-elevated" : ""}`}
+            onClick={() => setActiveTab("news")}
+            data-testid="button-tab-news"
+          >
+            <Newspaper className="w-3 h-3" />
+            News
+          </Button>
         </div>
 
         {activeTab === "feargreed" ? (
           <FearGreedTab />
+        ) : activeTab === "news" ? (
+          <NewsTab />
         ) : (
           <>
             <div className="rounded-md border border-border overflow-hidden bg-card">
