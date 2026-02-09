@@ -1000,81 +1000,72 @@ export default function TokenDetail() {
 
   return (
     <LayoutShell>
-      <div className="flex flex-col h-[calc(100vh-3.5rem)] overflow-hidden">
-        <div className="flex items-center gap-3 px-4 py-2 border-b border-border bg-card/50 flex-wrap">
-          <Link href="/">
-            <Button variant="ghost" size="icon" data-testid="button-back">
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-          </Link>
+      <div className="flex flex-col h-[calc(100vh-3rem)] md:h-[calc(100vh-3.5rem)] overflow-hidden">
+        <div className="px-2 sm:px-4 py-1.5 sm:py-2 border-b border-border bg-card/50">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link href="/">
+              <Button variant="ghost" size="icon" data-testid="button-back">
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+            </Link>
 
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-foreground" data-testid="text-symbol">{coinName}/USDT</span>
+            <span className="text-sm sm:text-lg font-bold text-foreground" data-testid="text-symbol">{coinName}/USDT</span>
+
+            <span
+              className={`text-base sm:text-xl font-bold font-mono transition-colors duration-300 ${
+                flash === "up" ? "text-[#0ecb81]" : flash === "down" ? "text-[#f6465d]" : "text-foreground"
+              }`}
+              data-testid="text-current-price"
+            >
+              ${formatPrice(currentPrice)}
+            </span>
+
+            <span
+              className={`text-xs font-mono font-semibold ${
+                isPositive ? "text-[#0ecb81]" : "text-[#f6465d]"
+              }`}
+              data-testid="badge-change"
+            >
+              {isPositive ? "+" : ""}{change.toFixed(2)}%
+            </span>
+
+            <div className="ml-auto flex items-center gap-1 sm:gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => {
+                  setAlertPrice(currentPrice.toString());
+                  setIsAlertSheetOpen(true);
+                }}
+                data-testid="button-create-alert"
+              >
+                <Bell className="w-4 h-4 text-[#f0b90b]" />
+              </Button>
+              {connected && (
+                <span className="text-[#0ecb81] text-[10px] hidden sm:flex items-center gap-1" data-testid="badge-ws-status">
+                  <Wifi className="w-3 h-3" /> Live
+                </span>
+              )}
+            </div>
           </div>
 
-          <span
-            className={`text-xl font-bold font-mono transition-colors duration-300 ${
-              flash === "up" ? "text-[#0ecb81]" : flash === "down" ? "text-[#f6465d]" : "text-foreground"
-            }`}
-            data-testid="text-current-price"
-          >
-            ${formatPrice(currentPrice)}
-          </span>
-
-          <Badge
-            variant="outline"
-            className={`text-xs no-default-hover-elevate no-default-active-elevate ${
-              isPositive ? "text-[#0ecb81] border-[#0ecb81]/30" : "text-[#f6465d] border-[#f6465d]/30"
-            }`}
-            data-testid="badge-change"
-          >
-            {isPositive ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
-            {isPositive ? "+" : ""}{change.toFixed(2)}%
-          </Badge>
-
-          <div className="hidden md:flex items-center gap-4 ml-4 text-xs">
+          <div className="hidden md:flex items-center gap-4 ml-11 text-xs mt-0.5">
             <div>
-              <span className="text-muted-foreground">24h High </span>
+              <span className="text-muted-foreground">H </span>
               <span className="font-mono text-foreground" data-testid="text-high">${formatPrice(high)}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">24h Low </span>
+              <span className="text-muted-foreground">L </span>
               <span className="font-mono text-foreground" data-testid="text-low">${formatPrice(low)}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">24h Vol({coinName}) </span>
+              <span className="text-muted-foreground">Vol </span>
               <span className="font-mono text-foreground" data-testid="text-volume">{formatVolume(volume)}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">24h Vol(USDT) </span>
+              <span className="text-muted-foreground">Vol($) </span>
               <span className="font-mono text-foreground">{formatVolume(quoteVolume)}</span>
             </div>
-          </div>
-
-          <div className="ml-auto flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5 text-xs"
-              onClick={() => {
-                setAlertPrice(currentPrice.toString());
-                setIsAlertSheetOpen(true);
-              }}
-              data-testid="button-create-alert"
-            >
-              <Bell className="w-3.5 h-3.5 text-[#f0b90b]" />
-              Create Alert
-            </Button>
-            {connected ? (
-              <Badge variant="outline" className="gap-1 text-[#0ecb81] border-[#0ecb81]/30 text-[10px] no-default-hover-elevate no-default-active-elevate" data-testid="badge-ws-status">
-                <Wifi className="w-3 h-3" />
-                Live
-              </Badge>
-            ) : (
-              <Badge variant="outline" className="gap-1 text-muted-foreground text-[10px] no-default-hover-elevate no-default-active-elevate" data-testid="badge-ws-status">
-                <WifiOff className="w-3 h-3" />
-              </Badge>
-            )}
           </div>
         </div>
 
@@ -1084,61 +1075,43 @@ export default function TokenDetail() {
           </div>
 
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border flex-wrap">
-              <BarChart3 className="w-3.5 h-3.5 text-muted-foreground mr-1" />
+            <div className="flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1 border-b border-border overflow-x-auto">
               {INTERVALS.map(iv => (
-                <Button
+                <button
                   key={iv.value}
-                  variant={interval === iv.value ? "secondary" : "ghost"}
-                  size="sm"
-                  className={`text-[10px] h-6 px-2 toggle-elevate ${interval === iv.value ? "toggle-elevated" : ""}`}
+                  className={`text-[10px] sm:text-xs px-1.5 sm:px-2 py-1 rounded-sm font-medium whitespace-nowrap transition-colors ${
+                    interval === iv.value
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground"
+                  }`}
                   onClick={() => setChartInterval(iv.value)}
                   data-testid={`button-interval-${iv.value}`}
                 >
                   {iv.label}
-                </Button>
+                </button>
               ))}
-              <div className="ml-2 border-l border-border pl-2 flex items-center gap-3">
+              <span className="w-px h-4 bg-border mx-1 flex-shrink-0" />
+              {[
+                { key: "bollinger", label: "BB", checked: showBollinger, onChange: setShowBollinger, color: "#f0b90b" },
+                { key: "rsi", label: "RSI", checked: showRSI, onChange: setShowRSI, color: "#b39ddb" },
+                { key: "macd", label: "MACD", checked: showMACD, onChange: setShowMACD, color: "#42a5f5" },
+              ].map(ind => (
                 <label
-                  className="flex items-center gap-1.5 cursor-pointer select-none"
-                  data-testid="label-bollinger-toggle"
+                  key={ind.key}
+                  className="flex items-center gap-1 cursor-pointer select-none flex-shrink-0"
+                  data-testid={`label-${ind.key}-toggle`}
                 >
                   <input
                     type="checkbox"
-                    checked={showBollinger}
-                    onChange={(e) => setShowBollinger(e.target.checked)}
-                    className="w-3 h-3 rounded accent-[#f0b90b] cursor-pointer"
-                    data-testid="checkbox-bollinger"
+                    checked={ind.checked}
+                    onChange={(e) => ind.onChange(e.target.checked)}
+                    className="w-3 h-3 rounded cursor-pointer"
+                    style={{ accentColor: ind.color }}
+                    data-testid={`checkbox-${ind.key}`}
                   />
-                  <span className="text-[10px] text-muted-foreground">BB</span>
+                  <span className="text-[10px] text-muted-foreground">{ind.label}</span>
                 </label>
-                <label
-                  className="flex items-center gap-1.5 cursor-pointer select-none"
-                  data-testid="label-rsi-toggle"
-                >
-                  <input
-                    type="checkbox"
-                    checked={showRSI}
-                    onChange={(e) => setShowRSI(e.target.checked)}
-                    className="w-3 h-3 rounded accent-[#b39ddb] cursor-pointer"
-                    data-testid="checkbox-rsi"
-                  />
-                  <span className="text-[10px] text-muted-foreground">RSI</span>
-                </label>
-                <label
-                  className="flex items-center gap-1.5 cursor-pointer select-none"
-                  data-testid="label-macd-toggle"
-                >
-                  <input
-                    type="checkbox"
-                    checked={showMACD}
-                    onChange={(e) => setShowMACD(e.target.checked)}
-                    className="w-3 h-3 rounded accent-[#42a5f5] cursor-pointer"
-                    data-testid="checkbox-macd"
-                  />
-                  <span className="text-[10px] text-muted-foreground">MACD</span>
-                </label>
-              </div>
+              ))}
             </div>
             <div className="flex-1 min-h-0">
               <ChartSection symbol={symbol} interval={interval} showBollinger={showBollinger} showRSI={showRSI} showMACD={showMACD} pendingOrders={symbolPendingOrders} />
@@ -1146,58 +1119,36 @@ export default function TokenDetail() {
 
             {allPendingOrders.length > 0 && (
               <div className="border-t border-border overflow-y-auto shrink-0" style={{ maxHeight: "140px" }}>
-                <div className="flex items-center justify-between px-3 py-1.5 border-b border-border sticky top-0 bg-card z-10">
+                <div className="flex items-center justify-between px-2 sm:px-3 py-1.5 border-b border-border sticky top-0 bg-card z-10">
                   <span className="text-xs font-medium text-foreground">Open Orders ({allPendingOrders.length})</span>
                 </div>
-                <div className="text-[10px] font-mono overflow-x-auto">
-                  <div className="grid grid-cols-[80px_60px_70px_1fr_80px_80px_40px] gap-1 px-3 py-1 text-muted-foreground border-b border-border sticky top-[29px] bg-card z-10 min-w-[520px]">
-                    <span>Date</span>
-                    <span>Pair</span>
-                    <span>Type</span>
-                    <span>Side/Price</span>
-                    <span className="text-right">Amount</span>
-                    <span className="text-right">Total</span>
-                    <span></span>
-                  </div>
+                <div className="text-[10px] font-mono">
                   {allPendingOrders.map((order: any) => {
                     const orderTypeLabel: Record<string, string> = { limit: "Limit", stop_limit: "Stop Limit", stop_market: "Stop Mkt" };
                     const displayPrice = order.limitPrice || order.stopPrice || order.price;
                     const total = Number(order.quantity) * Number(displayPrice);
-                    const date = order.timestamp ? new Date(order.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
                     return (
                       <div
                         key={order.id}
-                        className="grid grid-cols-[80px_60px_70px_1fr_80px_80px_40px] gap-1 px-3 py-1.5 items-center hover-elevate min-w-[520px]"
+                        className="flex items-center gap-2 px-2 sm:px-3 py-1.5 hover-elevate"
                         data-testid={`row-open-order-${order.id}`}
                       >
-                        <span className="text-muted-foreground">{date}</span>
+                        <span className={`font-semibold ${order.type === "buy" ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+                          {order.type.toUpperCase()}
+                        </span>
                         <span className="text-foreground">{order.symbol.replace("USDT", "")}</span>
-                        <Badge variant="outline" className="text-[8px] px-1 py-0 w-fit">
-                          {orderTypeLabel[order.orderType] || order.orderType}
-                        </Badge>
-                        <div className="flex items-center gap-1">
-                          <span className={order.type === "buy" ? "text-[#0ecb81] font-medium" : "text-[#f6465d] font-medium"}>
-                            {order.type.toUpperCase()}
-                          </span>
-                          <span className="text-muted-foreground">@</span>
-                          <span className="text-foreground">${formatPrice(Number(displayPrice))}</span>
-                          {order.stopPrice && order.limitPrice && (
-                            <span className="text-muted-foreground ml-1">(stp: ${formatPrice(Number(order.stopPrice))})</span>
-                          )}
-                        </div>
-                        <span className="text-right text-foreground">{Number(order.quantity).toFixed(6)}</span>
-                        <span className="text-right text-foreground">${total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
-                        <div className="flex justify-end">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => cancelOrder.mutate(order.id)}
-                            disabled={cancelOrder.isPending}
-                            data-testid={`button-cancel-open-order-${order.id}`}
-                          >
-                            <X className="w-3 h-3 text-[#f6465d]" />
-                          </Button>
-                        </div>
+                        <span className="text-muted-foreground">{orderTypeLabel[order.orderType] || order.orderType}</span>
+                        <span className="text-foreground">@${formatPrice(Number(displayPrice))}</span>
+                        <span className="text-muted-foreground ml-auto">${total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => cancelOrder.mutate(order.id)}
+                          disabled={cancelOrder.isPending}
+                          data-testid={`button-cancel-open-order-${order.id}`}
+                        >
+                          <X className="w-3 h-3 text-[#f6465d]" />
+                        </Button>
                       </div>
                     );
                   })}

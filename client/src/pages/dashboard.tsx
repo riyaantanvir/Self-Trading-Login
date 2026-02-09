@@ -493,51 +493,30 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="flex items-center gap-2 mb-4">
-          <Button
-            variant={activeTab === "all" ? "secondary" : "ghost"}
-            size="sm"
-            className={`text-xs toggle-elevate ${activeTab === "all" ? "toggle-elevated" : ""}`}
-            onClick={() => setActiveTab("all")}
-            data-testid="button-tab-all"
-          >
-            All Coins
-          </Button>
-          <Button
-            variant={activeTab === "watchlist" ? "secondary" : "ghost"}
-            size="sm"
-            className={`text-xs gap-1 toggle-elevate ${activeTab === "watchlist" ? "toggle-elevated" : ""}`}
-            onClick={() => setActiveTab("watchlist")}
-            data-testid="button-tab-watchlist"
-          >
-            <Star className="w-3 h-3" />
-            Watchlist
-            {watchlistSymbols.size > 0 && (
-              <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0" data-testid="badge-watchlist-count">
-                {watchlistSymbols.size}
-              </Badge>
-            )}
-          </Button>
-          <Button
-            variant={activeTab === "feargreed" ? "secondary" : "ghost"}
-            size="sm"
-            className={`text-xs gap-1 toggle-elevate ${activeTab === "feargreed" ? "toggle-elevated" : ""}`}
-            onClick={() => setActiveTab("feargreed")}
-            data-testid="button-tab-feargreed"
-          >
-            <Gauge className="w-3 h-3" />
-            Fear & Greed
-          </Button>
-          <Button
-            variant={activeTab === "news" ? "secondary" : "ghost"}
-            size="sm"
-            className={`text-xs gap-1 toggle-elevate ${activeTab === "news" ? "toggle-elevated" : ""}`}
-            onClick={() => setActiveTab("news")}
-            data-testid="button-tab-news"
-          >
-            <Newspaper className="w-3 h-3" />
-            News
-          </Button>
+        <div className="flex items-center gap-1 sm:gap-2 mb-4 overflow-x-auto">
+          {[
+            { key: "all" as const, label: "All", icon: null },
+            { key: "watchlist" as const, label: "Watchlist", icon: Star },
+            { key: "feargreed" as const, label: "F&G", icon: Gauge },
+            { key: "news" as const, label: "News", icon: Newspaper },
+          ].map((tab) => (
+            <Button
+              key={tab.key}
+              variant={activeTab === tab.key ? "secondary" : "ghost"}
+              size="sm"
+              className={`text-xs gap-1 whitespace-nowrap toggle-elevate ${activeTab === tab.key ? "toggle-elevated" : ""}`}
+              onClick={() => setActiveTab(tab.key)}
+              data-testid={`button-tab-${tab.key}`}
+            >
+              {tab.icon && <tab.icon className="w-3 h-3" />}
+              {tab.label}
+              {tab.key === "watchlist" && watchlistSymbols.size > 0 && (
+                <Badge variant="secondary" className="ml-0.5 text-[10px] px-1.5 py-0" data-testid="badge-watchlist-count">
+                  {watchlistSymbols.size}
+                </Badge>
+              )}
+            </Button>
+          ))}
         </div>
 
         {activeTab === "feargreed" ? (
@@ -546,146 +525,113 @@ export default function Dashboard() {
           <NewsTab />
         ) : (
           <>
-            <div className="rounded-md border border-border overflow-hidden bg-card">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border bg-muted/30">
-                      <th className="text-left p-3 text-xs text-muted-foreground font-medium">
-                        <button onClick={() => handleSort("symbol")} className="flex items-center gap-1" data-testid="button-sort-pair">
-                          Pair <ArrowUpDown className="w-3 h-3" />
-                        </button>
-                      </th>
-                      <th className="text-right p-3 text-xs text-muted-foreground font-medium">
-                        <button onClick={() => handleSort("lastPrice")} className="flex items-center gap-1 ml-auto" data-testid="button-sort-price">
-                          Price <ArrowUpDown className="w-3 h-3" />
-                        </button>
-                      </th>
-                      <th className="text-right p-3 text-xs text-muted-foreground font-medium">
-                        <button onClick={() => handleSort("priceChangePercent")} className="flex items-center gap-1 ml-auto" data-testid="button-sort-change">
-                          24h Change <ArrowUpDown className="w-3 h-3" />
-                        </button>
-                      </th>
-                      <th className="text-right p-3 text-xs text-muted-foreground font-medium hidden md:table-cell">24h High</th>
-                      <th className="text-right p-3 text-xs text-muted-foreground font-medium hidden md:table-cell">24h Low</th>
-                      <th className="text-right p-3 text-xs text-muted-foreground font-medium hidden sm:table-cell">
-                        <button onClick={() => handleSort("quoteVolume")} className="flex items-center gap-1 ml-auto" data-testid="button-sort-volume">
-                          24h Volume <ArrowUpDown className="w-3 h-3" />
-                        </button>
-                      </th>
-                      <th className="text-right p-3 text-xs text-muted-foreground font-medium w-12">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTickers.map((ticker) => {
-                      const change = parseFloat(ticker.priceChangePercent);
-                      const isPositive = change >= 0;
-                      const coinName = ticker.symbol.replace("USDT", "");
-                      const flash = priceFlashes.get(ticker.symbol);
-                      const flashClass = flash === "up"
-                        ? "bg-[#0ecb81]/15"
-                        : flash === "down"
-                        ? "bg-[#f6465d]/15"
-                        : "";
-                      const isWatched = watchlistSymbols.has(ticker.symbol);
-                      return (
-                        <tr
-                          key={ticker.symbol}
-                          className={`border-b border-border/50 hover-elevate cursor-pointer transition-colors duration-300 ${flashClass}`}
-                          data-testid={`row-ticker-${ticker.symbol}`}
-                          onClick={() => openToken(ticker)}
-                        >
-                          <td className="p-3">
-                            <div className="flex items-center gap-2">
-                              {isWatched && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 flex-shrink-0" />}
-                              <span className="font-semibold text-foreground">{coinName}</span>
-                              <span className="text-xs text-muted-foreground">/USDT</span>
-                            </div>
-                          </td>
-                          <td className="p-3 text-right" data-testid={`text-price-${ticker.symbol}`}>
-                            <span className={`font-mono transition-colors duration-300 ${
-                              flash === "up" ? "text-[#0ecb81]" : flash === "down" ? "text-[#f6465d]" : "text-foreground"
-                            }`}>
-                              ${formatPrice(ticker.lastPrice)}
-                            </span>
-                          </td>
-                          <td className="p-3 text-right">
-                            <span className={`font-mono font-medium ${isPositive ? "text-[#0ecb81]" : "text-[#f6465d]"}`} data-testid={`text-change-${ticker.symbol}`}>
-                              {isPositive ? "+" : ""}{change.toFixed(2)}%
-                            </span>
-                          </td>
-                          <td className="p-3 text-right font-mono text-muted-foreground hidden md:table-cell">
-                            ${formatPrice(ticker.highPrice)}
-                          </td>
-                          <td className="p-3 text-right font-mono text-muted-foreground hidden md:table-cell">
-                            ${formatPrice(ticker.lowPrice)}
-                          </td>
-                          <td className="p-3 text-right font-mono text-muted-foreground hidden sm:table-cell">
-                            ${formatVolume(ticker.quoteVolume)}
-                          </td>
-                          <td className="p-3 text-right">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={(e) => e.stopPropagation()}
-                                  data-testid={`button-actions-${ticker.symbol}`}
-                                >
-                                  <MoreVertical className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openToken(ticker);
-                                  }}
-                                  className="cursor-pointer"
-                                  data-testid={`menu-trade-${ticker.symbol}`}
-                                >
-                                  <Eye className="w-4 h-4 mr-2" />
-                                  View {coinName}
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={(e) => toggleWatchlist(ticker.symbol, e as any)}
-                                  className="cursor-pointer"
-                                  data-testid={`menu-watchlist-${ticker.symbol}`}
-                                >
-                                  <Star className={`w-4 h-4 mr-2 ${isWatched ? "text-yellow-500 fill-yellow-500" : ""}`} />
-                                  {isWatched ? "Remove from Watchlist" : "Add to Watchlist"}
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {filteredTickers.length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                          {activeTab === "watchlist"
-                            ? "Your watchlist is empty. Add coins from the All Coins tab."
-                            : "No coins found matching your search."}
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+            <div className="flex items-center gap-3 mb-3 text-[10px] sm:text-xs text-muted-foreground">
+              <button onClick={() => handleSort("symbol")} className="flex items-center gap-1" data-testid="button-sort-pair">
+                Name <ArrowUpDown className="w-3 h-3" />
+              </button>
+              <button onClick={() => handleSort("lastPrice")} className="flex items-center gap-1" data-testid="button-sort-price">
+                Price <ArrowUpDown className="w-3 h-3" />
+              </button>
+              <button onClick={() => handleSort("priceChangePercent")} className="flex items-center gap-1" data-testid="button-sort-change">
+                24h% <ArrowUpDown className="w-3 h-3" />
+              </button>
+              <button onClick={() => handleSort("quoteVolume")} className="flex items-center gap-1" data-testid="button-sort-volume">
+                Vol <ArrowUpDown className="w-3 h-3" />
+              </button>
+              <div className="ml-auto">
+                {connected ? (
+                  <span className="flex items-center gap-1 text-[#0ecb81]" data-testid="badge-ws-status">
+                    <Wifi className="w-3 h-3" /> Live
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1" data-testid="badge-ws-status">
+                    <WifiOff className="w-3 h-3" /> ...
+                  </span>
+                )}
               </div>
             </div>
 
-            <div className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-              {connected ? (
-                <Badge variant="outline" className="gap-1 text-[#0ecb81] border-[#0ecb81]/30 no-default-hover-elevate no-default-active-elevate" data-testid="badge-ws-status">
-                  <Wifi className="w-3 h-3" />
-                  Live - Real-time Binance Data
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="gap-1 text-muted-foreground no-default-hover-elevate no-default-active-elevate" data-testid="badge-ws-status">
-                  <WifiOff className="w-3 h-3" />
-                  Connecting...
-                </Badge>
+            <div className="space-y-1">
+              {filteredTickers.map((ticker) => {
+                const change = parseFloat(ticker.priceChangePercent);
+                const isPositive = change >= 0;
+                const coinName = ticker.symbol.replace("USDT", "");
+                const flash = priceFlashes.get(ticker.symbol);
+                const isWatched = watchlistSymbols.has(ticker.symbol);
+                return (
+                  <div
+                    key={ticker.symbol}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-md hover-elevate cursor-pointer transition-colors duration-300 ${
+                      flash === "up" ? "bg-[#0ecb81]/8" : flash === "down" ? "bg-[#f6465d]/8" : ""
+                    }`}
+                    data-testid={`row-ticker-${ticker.symbol}`}
+                    onClick={() => openToken(ticker)}
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      {isWatched && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 flex-shrink-0" />}
+                      <div className="min-w-0">
+                        <div className="font-semibold text-sm text-foreground">{coinName}<span className="text-muted-foreground font-normal text-xs">/USDT</span></div>
+                        <div className="text-[10px] text-muted-foreground font-mono">Vol ${formatVolume(ticker.quoteVolume)}</div>
+                      </div>
+                    </div>
+
+                    <div className="text-right flex-shrink-0">
+                      <div className={`font-mono text-sm transition-colors duration-300 ${
+                        flash === "up" ? "text-[#0ecb81]" : flash === "down" ? "text-[#f6465d]" : "text-foreground"
+                      }`} data-testid={`text-price-${ticker.symbol}`}>
+                        ${formatPrice(ticker.lastPrice)}
+                      </div>
+                    </div>
+
+                    <div className={`text-right flex-shrink-0 min-w-[72px] px-2 py-1 rounded-md text-xs font-mono font-semibold ${
+                      isPositive ? "bg-[#0ecb81]/15 text-[#0ecb81]" : "bg-[#f6465d]/15 text-[#f6465d]"
+                    }`} data-testid={`text-change-${ticker.symbol}`}>
+                      {isPositive ? "+" : ""}{change.toFixed(2)}%
+                    </div>
+
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex-shrink-0 hidden sm:flex"
+                          data-testid={`button-actions-${ticker.symbol}`}
+                        >
+                          <MoreVertical className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openToken(ticker);
+                          }}
+                          className="cursor-pointer"
+                          data-testid={`menu-trade-${ticker.symbol}`}
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          View {coinName}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => toggleWatchlist(ticker.symbol, e as any)}
+                          className="cursor-pointer"
+                          data-testid={`menu-watchlist-${ticker.symbol}`}
+                        >
+                          <Star className={`w-4 h-4 mr-2 ${isWatched ? "text-yellow-500 fill-yellow-500" : ""}`} />
+                          {isWatched ? "Remove from Watchlist" : "Add to Watchlist"}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                );
+              })}
+              {filteredTickers.length === 0 && (
+                <div className="py-12 text-center text-muted-foreground text-sm">
+                  {activeTab === "watchlist"
+                    ? "Your watchlist is empty. Add coins from the All Coins tab."
+                    : "No coins found matching your search."}
+                </div>
               )}
             </div>
           </>
