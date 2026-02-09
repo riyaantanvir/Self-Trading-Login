@@ -63,6 +63,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - All indicator sub-charts are time-synced with the main candlestick chart
 
 ## Recent Changes
+- Feb 2026: Added Fear & Greed Index tab on Markets page with visual gauge, today/yesterday/7d comparison, and 30-day history bar chart (data from alternative.me API, cached 5min server-side)
 - Feb 2026: Added RSI and MACD indicators with separate sub-panels and time-synced scrolling
 - Feb 2026: Added Bollinger Bands indicator to trading charts with toggle checkbox on interval bar
 - Feb 2026: Added PNL analysis page (/pnl) with daily calendar view, net worth chart, cumulative PNL chart, profits bar chart, 7D/30D/90D period tabs; Today's PNL on assets page is now clickable to navigate there

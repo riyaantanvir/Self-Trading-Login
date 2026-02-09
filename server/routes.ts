@@ -717,6 +717,26 @@ export async function registerRoutes(
     res.json(triggered);
   });
 
+  let fngCache: { data: any; timestamp: number } | null = null;
+  const FNG_CACHE_TTL = 5 * 60 * 1000;
+
+  app.get("/api/market/fear-greed", async (_req, res) => {
+    try {
+      if (fngCache && Date.now() - fngCache.timestamp < FNG_CACHE_TTL) {
+        return res.json(fngCache.data);
+      }
+      const response = await fetch("https://api.alternative.me/fng/?limit=30&date_format=world");
+      if (!response.ok) throw new Error("Failed to fetch Fear & Greed data");
+      const json = await response.json();
+      fngCache = { data: json, timestamp: Date.now() };
+      res.json(json);
+    } catch (e) {
+      console.error("[FNG] Error fetching Fear & Greed Index:", e);
+      if (fngCache) return res.json(fngCache.data);
+      res.status(500).json({ message: "Failed to fetch Fear & Greed Index" });
+    }
+  });
+
   app.get("/api/admin/users", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const user = req.user as any;
