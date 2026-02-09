@@ -61,11 +61,12 @@ export default function AuthPage() {
         </div>
 
         <Card className="border-border">
-          <CardHeader className="pb-3">
+          <CardHeader className="pb-3 px-6">
             <div className="flex gap-4">
               <button
+                type="button"
                 onClick={() => setActiveTab("login")}
-                className={`text-base font-semibold pb-1 ${
+                className={`text-base font-semibold pb-1 cursor-pointer z-10 ${
                   activeTab === "login"
                     ? "text-foreground border-b-2 border-[#0ecb81]"
                     : "text-muted-foreground"
@@ -75,8 +76,9 @@ export default function AuthPage() {
                 Sign In
               </button>
               <button
+                type="button"
                 onClick={() => setActiveTab("signup")}
-                className={`text-base font-semibold pb-1 ${
+                className={`text-base font-semibold pb-1 cursor-pointer z-10 ${
                   activeTab === "signup"
                     ? "text-foreground border-b-2 border-[#0ecb81]"
                     : "text-muted-foreground"
@@ -87,7 +89,7 @@ export default function AuthPage() {
               </button>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-6">
             {activeTab === "login" ? (
               <Form {...loginForm}>
                 <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
@@ -154,9 +156,9 @@ export default function AuthPage() {
                         <FormControl>
                           <Input
                             placeholder="Enter email"
-                            autoComplete="new-email"
+                            autoComplete="off"
                             {...field}
-                            className="bg-background border-border"
+                            className="bg-background border-border relative z-20"
                             data-testid="input-signup-email"
                           />
                         </FormControl>
@@ -173,9 +175,9 @@ export default function AuthPage() {
                         <FormControl>
                           <Input
                             placeholder="Choose a username"
-                            autoComplete="new-username"
+                            autoComplete="off"
                             {...field}
-                            className="bg-background border-border"
+                            className="bg-background border-border relative z-20"
                             data-testid="input-signup-username"
                           />
                         </FormControl>
@@ -193,9 +195,9 @@ export default function AuthPage() {
                           <Input
                             type="password"
                             placeholder="Min 6 characters"
-                            autoComplete="new-password"
+                            autoComplete="off"
                             {...field}
-                            className="bg-background border-border"
+                            className="bg-background border-border relative z-20"
                             data-testid="input-signup-password"
                           />
                         </FormControl>
