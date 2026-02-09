@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useRoute, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
@@ -940,7 +940,16 @@ export default function TokenDetail() {
   const [, params] = useRoute("/trade/:symbol");
   const symbol = params?.symbol?.toUpperCase() || "BTCUSDT";
   const coinName = symbol.replace("USDT", "");
-  const [interval, setInterval_] = useState("1h");
+  const [interval, setInterval_] = useState(() => {
+    try {
+      return localStorage.getItem("chart_interval") || "1h";
+    } catch { return "1h"; }
+  });
+
+  const setChartInterval = useCallback((val: string) => {
+    setInterval_(val);
+    try { localStorage.setItem("chart_interval", val); } catch {}
+  }, []);
 
   const { connected, priceFlashes } = useBinanceWebSocket();
   const { data: tickers } = useTickers();
@@ -1083,7 +1092,7 @@ export default function TokenDetail() {
                   variant={interval === iv.value ? "secondary" : "ghost"}
                   size="sm"
                   className={`text-[10px] h-6 px-2 toggle-elevate ${interval === iv.value ? "toggle-elevated" : ""}`}
-                  onClick={() => setInterval_(iv.value)}
+                  onClick={() => setChartInterval(iv.value)}
                   data-testid={`button-interval-${iv.value}`}
                 >
                   {iv.label}
