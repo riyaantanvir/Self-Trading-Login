@@ -198,7 +198,10 @@ function FearGreedTab() {
               <div>
                 <h3 className="text-lg font-semibold text-foreground">Crypto Fear & Greed Index</h3>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Measures market sentiment from 0 (extreme fear) to 100 (extreme greed) based on volatility, volume, social media, and market trends.
+                  Measures market sentiment from 0 (extreme fear) to 100 (extreme greed) based on volatility, momentum, social media, dominance, and trends.
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Data source: Alternative.me | Updated daily
                 </p>
               </div>
               <div className="grid grid-cols-3 gap-3">
