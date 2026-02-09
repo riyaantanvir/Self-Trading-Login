@@ -347,6 +347,60 @@ function setupBinanceLiveStream(httpServer: Server) {
     }
   }, 3000);
 
+  let lastSeenNewsIds = new Set<string>();
+  let newsAlertInitialized = false;
+
+  setInterval(async () => {
+    try {
+      const response = await fetch(
+        "https://min-api.cryptocompare.com/data/v2/news/?lang=EN&sortOrder=latest"
+      );
+      if (!response.ok) return;
+      const json = await response.json();
+      const articles = (json.Data || []).slice(0, 20);
+
+      if (!newsAlertInitialized) {
+        for (const a of articles) lastSeenNewsIds.add(String(a.id));
+        newsAlertInitialized = true;
+        console.log(`[News Alerts] Initialized with ${lastSeenNewsIds.size} existing articles`);
+        return;
+      }
+
+      const newArticles = articles.filter((a: any) => !lastSeenNewsIds.has(String(a.id)));
+      if (newArticles.length === 0) return;
+
+      for (const a of articles) lastSeenNewsIds.add(String(a.id));
+      if (lastSeenNewsIds.size > 200) {
+        const arr = Array.from(lastSeenNewsIds);
+        lastSeenNewsIds = new Set(arr.slice(arr.length - 100));
+      }
+
+      const usersWithAlerts = await storage.getUsersWithNewsAlerts();
+      if (usersWithAlerts.length === 0) return;
+
+      for (const article of newArticles) {
+        const title = article.title || "Untitled";
+        const source = article.source_info?.name || article.source || "Unknown";
+        const url = article.url || "";
+        const msg = `<b>Crypto News Alert</b>\n\n<b>${title}</b>\n<i>Source: ${source}</i>\n\n<a href="${url}">Read full article</a>\n\n- Self Treding`;
+
+        for (const user of usersWithAlerts) {
+          if (user.telegramBotToken && user.telegramChatId) {
+            try {
+              await sendTelegramMessage(user.telegramBotToken, user.telegramChatId, msg);
+            } catch (err) {
+              console.error(`[News Alerts] Failed to send to user ${user.id}:`, err);
+            }
+          }
+        }
+      }
+
+      console.log(`[News Alerts] Sent ${newArticles.length} new article(s) to ${usersWithAlerts.length} user(s)`);
+    } catch (err) {
+      console.error("[News Alerts] Error:", err);
+    }
+  }, 2 * 60 * 1000);
+
   connectBinance();
 
   wss.on("connection", (ws) => {
@@ -829,6 +883,24 @@ export async function registerRoutes(
     } else {
       res.status(400).json({ message: result.error || "Failed to send test message. Check your bot token and chat ID." });
     }
+  });
+
+  app.get("/api/user/news-alerts", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = await storage.getUser(req.user!.id);
+    res.json({ enabled: user?.newsAlertsEnabled || false });
+  });
+
+  app.post("/api/user/news-alerts", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = await storage.getUser(req.user!.id);
+    if (!user?.telegramBotToken || !user?.telegramChatId) {
+      return res.status(400).json({ message: "Please configure Telegram settings first before enabling news alerts" });
+    }
+    const schema = z.object({ enabled: z.boolean() });
+    const { enabled } = schema.parse(req.body);
+    await storage.updateNewsAlerts(req.user!.id, enabled);
+    res.json({ success: true, enabled });
   });
 
   app.get("/api/alerts", async (req, res) => {

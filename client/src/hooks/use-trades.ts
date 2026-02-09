@@ -260,6 +260,29 @@ export function usePnlHistory() {
   });
 }
 
+export function useNewsAlerts() {
+  return useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/user/news-alerts"],
+    queryFn: async () => {
+      const res = await fetch("/api/user/news-alerts", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch news alert settings");
+      return await res.json();
+    },
+  });
+}
+
+export function useToggleNewsAlerts() {
+  return useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await apiRequest("POST", "/api/user/news-alerts", { enabled });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user/news-alerts"] });
+    },
+  });
+}
+
 export function useTodayPnl() {
   return useQuery({
     queryKey: ["/api/portfolio/today-pnl"],

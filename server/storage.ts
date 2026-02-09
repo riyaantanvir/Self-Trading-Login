@@ -25,6 +25,8 @@ export interface IStorage {
   removeFromWatchlist(userId: number, symbol: string): Promise<void>;
 
   updateUserTelegram(id: number, telegramBotToken: string, telegramChatId: string): Promise<void>;
+  updateNewsAlerts(id: number, enabled: boolean): Promise<void>;
+  getUsersWithNewsAlerts(): Promise<User[]>;
 
   getPriceAlerts(userId: number): Promise<PriceAlert[]>;
   getActivePriceAlerts(): Promise<PriceAlert[]>;
@@ -137,6 +139,14 @@ export class DatabaseStorage implements IStorage {
   }
   async updateUserTelegram(id: number, telegramBotToken: string, telegramChatId: string): Promise<void> {
     await db.update(users).set({ telegramBotToken, telegramChatId }).where(eq(users.id, id));
+  }
+
+  async updateNewsAlerts(id: number, enabled: boolean): Promise<void> {
+    await db.update(users).set({ newsAlertsEnabled: enabled }).where(eq(users.id, id));
+  }
+
+  async getUsersWithNewsAlerts(): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.newsAlertsEnabled, true));
   }
 
   async getPriceAlerts(userId: number): Promise<PriceAlert[]> {

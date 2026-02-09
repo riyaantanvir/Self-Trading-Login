@@ -11,6 +11,7 @@ export const users = pgTable("users", {
   balance: doublePrecision("balance").default(100000).notNull(),
   telegramBotToken: text("telegram_bot_token").default(""),
   telegramChatId: text("telegram_chat_id").default(""),
+  newsAlertsEnabled: boolean("news_alerts_enabled").default(false).notNull(),
 });
 
 export const trades = pgTable("trades", {

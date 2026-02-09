@@ -1,21 +1,25 @@
 import { useState } from "react";
 import { LayoutShell } from "@/components/layout-shell";
-import { useAlerts, useCreateAlert, useDeleteAlert, useTickers, useSaveTelegramSettings, useTestTelegram } from "@/hooks/use-trades";
+import { useAlerts, useCreateAlert, useDeleteAlert, useTickers, useSaveTelegramSettings, useTestTelegram, useNewsAlerts, useToggleNewsAlerts } from "@/hooks/use-trades";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Bell, BellOff, Trash2, ArrowUp, ArrowDown, Plus, X, Check, Send, Settings, Activity } from "lucide-react";
+import { Bell, BellOff, Trash2, ArrowUp, ArrowDown, Plus, X, Check, Send, Settings, Activity, Newspaper } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { SiTelegram } from "react-icons/si";
 
 export default function AlertsPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const { data: alerts, isLoading } = useAlerts();
   const { data: tickers } = useTickers();
   const createAlert = useCreateAlert();
   const deleteAlert = useDeleteAlert();
   const saveTelegram = useSaveTelegramSettings();
   const testTelegram = useTestTelegram();
+  const { data: newsAlertData } = useNewsAlerts();
+  const toggleNewsAlerts = useToggleNewsAlerts();
 
   const [showCreate, setShowCreate] = useState(false);
   const [showTgSettings, setShowTgSettings] = useState(false);
@@ -155,6 +159,60 @@ export default function AlertsPage() {
               <div className="flex items-center gap-2 text-xs text-[#0ecb81]">
                 <Check className="w-3 h-3" />
                 Telegram connected
+              </div>
+            )}
+            {hasTelegramSetup && (
+              <div className="border-t border-border pt-3 mt-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Newspaper className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <div className="text-sm font-medium" data-testid="text-news-alerts-label">News Headline Alerts</div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Receive new crypto news headlines via Telegram (checked every 2 min)
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant={newsAlertData?.enabled ? "default" : "outline"}
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => {
+                      const newState = !newsAlertData?.enabled;
+                      toggleNewsAlerts.mutate(newState, {
+                        onSuccess: () => {
+                          toast({
+                            title: newState ? "News alerts enabled" : "News alerts disabled",
+                            description: newState
+                              ? "You'll receive crypto news headlines on Telegram"
+                              : "News headline alerts have been turned off",
+                          });
+                        },
+                        onError: (err: any) => {
+                          toast({
+                            title: "Error",
+                            description: err.message || "Failed to update news alert settings",
+                            variant: "destructive",
+                          });
+                        },
+                      });
+                    }}
+                    disabled={toggleNewsAlerts.isPending}
+                    data-testid="button-toggle-news-alerts"
+                  >
+                    {newsAlertData?.enabled ? (
+                      <>
+                        <Bell className="w-3.5 h-3.5" />
+                        On
+                      </>
+                    ) : (
+                      <>
+                        <BellOff className="w-3.5 h-3.5" />
+                        Off
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             )}
           </Card>
