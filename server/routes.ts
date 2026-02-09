@@ -480,6 +480,93 @@ export async function registerRoutes(
     }
   });
 
+  const trendCache: { data: any; timestamp: number } = { data: null, timestamp: 0 };
+  app.get("/api/market/trends", async (_req, res) => {
+    try {
+      const now = Date.now();
+      if (trendCache.data && now - trendCache.timestamp < 60000) {
+        return res.json(trendCache.data);
+      }
+
+      const symbols = TRACKED_SYMBOLS.map(s => s.toUpperCase());
+      const results: any[] = [];
+
+      const batchSize = 5;
+      for (let i = 0; i < symbols.length; i += batchSize) {
+        const batch = symbols.slice(i, i + batchSize);
+        const promises = batch.map(async (sym) => {
+          try {
+            const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=1h&limit=50`;
+            const response = await fetch(url);
+            if (!response.ok) return null;
+            const data = await response.json();
+            const closes = (data as any[]).map((k: any) => parseFloat(k[4]));
+            const volumes = (data as any[]).map((k: any) => parseFloat(k[5]));
+
+            if (closes.length < 26) return null;
+
+            const ema9 = computeEMA(closes, 9);
+            const ema21 = computeEMA(closes, 21);
+            const ema50 = computeEMA(closes, 50);
+            const currentPrice = closes[closes.length - 1];
+            const avgVol = volumes.slice(0, -1).reduce((a: number, b: number) => a + b, 0) / (volumes.length - 1);
+            const currentVol = volumes[volumes.length - 1];
+            const volRatio = avgVol > 0 ? currentVol / avgVol : 1;
+
+            let trend: "strong_buy" | "buy" | "neutral" | "sell" | "strong_sell" = "neutral";
+            let score = 0;
+            if (ema9 > ema21) score++;
+            if (ema21 > ema50) score++;
+            if (currentPrice > ema9) score++;
+            if (currentPrice > ema21) score++;
+            if (ema9 < ema21) score--;
+            if (ema21 < ema50) score--;
+            if (currentPrice < ema9) score--;
+            if (currentPrice < ema21) score--;
+
+            if (score >= 3) trend = "strong_buy";
+            else if (score >= 1) trend = "buy";
+            else if (score <= -3) trend = "strong_sell";
+            else if (score <= -1) trend = "sell";
+
+            return {
+              symbol: sym,
+              trend,
+              score,
+              ema9: +ema9.toFixed(8),
+              ema21: +ema21.toFixed(8),
+              ema50: +ema50.toFixed(8),
+              price: currentPrice,
+              volRatio: +volRatio.toFixed(2),
+              volumeAnomaly: volRatio > 2,
+            };
+          } catch {
+            return null;
+          }
+        });
+        const batchResults = await Promise.all(promises);
+        results.push(...batchResults.filter(Boolean));
+      }
+
+      trendCache.data = results;
+      trendCache.timestamp = now;
+      res.json(results);
+    } catch (err) {
+      console.error("Trends error:", err);
+      res.status(500).json({ message: "Failed to compute trends" });
+    }
+  });
+
+  function computeEMA(data: number[], period: number): number {
+    if (data.length === 0) return 0;
+    const k = 2 / (period + 1);
+    let ema = data[0];
+    for (let i = 1; i < data.length; i++) {
+      ema = data[i] * k + ema * (1 - k);
+    }
+    return ema;
+  }
+
   app.get("/api/trades", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const userTrades = await storage.getTrades(req.user!.id);

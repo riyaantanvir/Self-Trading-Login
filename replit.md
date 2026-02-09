@@ -34,6 +34,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `GET /api/market/tickers` - Live cached ticker data (from Binance WS)
 - `GET /api/market/klines` - Candlestick chart data from Binance (params: symbol, interval, limit)
 - `GET /api/market/news` - Crypto news feed from CryptoCompare (cached 3min, returns 50 articles with title, body, source, image, timestamp)
+- `GET /api/market/trends` - EMA-based trend analysis for all tracked symbols (EMA 9/21/50 on 1H klines, volume anomaly detection, cached 1min)
 - `WS /ws/market` - WebSocket relay for real-time ticker updates
 - `POST /api/login` - Login
 - `POST /api/logout` - Logout
@@ -72,6 +73,9 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Cancel returns reserved balance (buy) or holdings (sell)
 
 ## Recent Changes
+- Feb 2026: Added MMT Analytics tab on Markets page (market overview cards, top gainers/losers, market heatmap, volume leaders, volume anomaly detection, trend meter with EMA 9/21/50 signals, all real-time from Binance data)
+- Feb 2026: Chart zoom/scroll now persists during 30-second data refreshes (in-place data updates instead of chart rebuild)
+- Feb 2026: Professional TradingView chart styling (darker background #131722, muted grids, trading colors #26a69a/#ef5350)
 - Feb 2026: Added real-time crypto news feed tab on Markets page (CryptoCompare API, featured article + grid layout, 3min server cache, auto-refresh)
 - Feb 2026: Fixed stop-limit order execution (two-phase: stop triggers first, then becomes limit order; added stopTriggered DB field)
 - Feb 2026: Chart remembers last selected candle interval via localStorage
