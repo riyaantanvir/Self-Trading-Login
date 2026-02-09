@@ -144,7 +144,7 @@ export default function AuthPage() {
               </Form>
             ) : (
               <Form {...signupForm}>
-                <form onSubmit={signupForm.handleSubmit(onSignup)} className="space-y-4">
+                <form onSubmit={signupForm.handleSubmit(onSignup)} className="space-y-4" autoComplete="off">
                   <FormField
                     control={signupForm.control}
                     name="email"
@@ -155,6 +155,7 @@ export default function AuthPage() {
                           <Input
                             type="email"
                             placeholder="Enter email"
+                            autoComplete="new-email"
                             {...field}
                             className="bg-background border-border"
                             data-testid="input-signup-email"
@@ -173,6 +174,7 @@ export default function AuthPage() {
                         <FormControl>
                           <Input
                             placeholder="Choose a username"
+                            autoComplete="new-username"
                             {...field}
                             className="bg-background border-border"
                             data-testid="input-signup-username"
@@ -192,6 +194,7 @@ export default function AuthPage() {
                           <Input
                             type="password"
                             placeholder="Min 6 characters"
+                            autoComplete="new-password"
                             {...field}
                             className="bg-background border-border"
                             data-testid="input-signup-password"
