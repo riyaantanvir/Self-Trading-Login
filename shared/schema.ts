@@ -22,6 +22,9 @@ export const trades = pgTable("trades", {
   price: doublePrecision("price").notNull(),
   total: doublePrecision("total").notNull(),
   status: text("status").default("completed").notNull(),
+  orderType: text("order_type").default("market").notNull(),
+  limitPrice: doublePrecision("limit_price"),
+  stopPrice: doublePrecision("stop_price"),
   timestamp: timestamp("timestamp").defaultNow(),
 });
 

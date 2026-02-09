@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useRoute, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
-import { useCreateTrade, useTickers, usePortfolio, useCreateAlert } from "@/hooks/use-trades";
+import { useCreateTrade, useTickers, usePortfolio, useCreateAlert, usePendingOrders, useCancelOrder } from "@/hooks/use-trades";
 import { useAuth } from "@/hooks/use-auth";
 import { LayoutShell } from "@/components/layout-shell";
 import { Button } from "@/components/ui/button";
@@ -449,10 +449,16 @@ function TradePanel({
   onComplete?: () => void;
 }) {
   const [type, setType] = useState<"buy" | "sell">(defaultType);
+  const [orderType, setOrderType] = useState<"market" | "limit" | "stop_limit" | "stop_market">("market");
   const [inputMode, setInputMode] = useState<"token" | "usdt">("usdt");
   const [amount, setAmount] = useState("");
+  const [limitPriceVal, setLimitPriceVal] = useState("");
+  const [stopPriceVal, setStopPriceVal] = useState("");
   const [sliderValue, setSliderValue] = useState(0);
+  const [orderTypeOpen, setOrderTypeOpen] = useState(false);
   const createTrade = useCreateTrade();
+  const { data: pendingData } = usePendingOrders();
+  const cancelOrder = useCancelOrder();
   const { user } = useAuth();
   const { data: portfolioData } = usePortfolio();
   const coinName = symbol.replace("USDT", "");
@@ -462,14 +468,27 @@ function TradePanel({
 
   const numAmount = Number(amount) || 0;
 
-  const tokenQty = inputMode === "token" ? numAmount : (currentPrice > 0 ? numAmount / currentPrice : 0);
-  const usdtTotal = inputMode === "usdt" ? numAmount : numAmount * currentPrice;
+  const effectivePrice = orderType === "limit" || orderType === "stop_limit"
+    ? (Number(limitPriceVal) || currentPrice)
+    : currentPrice;
+
+  const tokenQty = inputMode === "token" ? numAmount : (effectivePrice > 0 ? numAmount / effectivePrice : 0);
+  const usdtTotal = inputMode === "usdt" ? numAmount : numAmount * effectivePrice;
 
   const minUsdt = 5;
   const isBelowMin = usdtTotal > 0 && usdtTotal < minUsdt;
 
   const maxBuyUsdt = user ? Number(user.balance) : 0;
-  const maxSellUsdt = holdingQty * currentPrice;
+  const maxSellUsdt = holdingQty * effectivePrice;
+
+  const pendingOrders = (pendingData as any[] || []).filter((o: any) => o.symbol === symbol);
+
+  const orderTypeLabels: Record<string, string> = {
+    market: "Market",
+    limit: "Limit",
+    stop_limit: "Stop Limit",
+    stop_market: "Stop Market",
+  };
 
   function handlePercentClick(pct: number) {
     if (type === "buy") {
@@ -477,7 +496,7 @@ function TradePanel({
       if (inputMode === "usdt") {
         setAmount(usdtAmt.toFixed(2));
       } else {
-        const tokenAmt = currentPrice > 0 ? usdtAmt / currentPrice : 0;
+        const tokenAmt = effectivePrice > 0 ? usdtAmt / effectivePrice : 0;
         setAmount(tokenAmt.toFixed(6));
       }
     } else {
@@ -485,7 +504,7 @@ function TradePanel({
       if (inputMode === "token") {
         setAmount(tokenAmt.toFixed(6));
       } else {
-        const usdtAmt = tokenAmt * currentPrice;
+        const usdtAmt = tokenAmt * effectivePrice;
         setAmount(usdtAmt.toFixed(2));
       }
     }
@@ -500,16 +519,33 @@ function TradePanel({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (tokenQty <= 0 || isBelowMin) return;
-    createTrade.mutate(
-      { symbol, type, quantity: parseFloat(tokenQty.toFixed(8)), price: currentPrice },
-      {
-        onSuccess: () => {
-          setAmount("");
-          setSliderValue(0);
-          onComplete?.();
-        },
-      }
-    );
+
+    const tradeData: any = {
+      symbol,
+      type,
+      quantity: parseFloat(tokenQty.toFixed(8)),
+      price: currentPrice,
+      orderType,
+    };
+
+    if (orderType === "limit" || orderType === "stop_limit") {
+      const lp = Number(limitPriceVal);
+      if (!lp || lp <= 0) return;
+      tradeData.limitPrice = lp;
+    }
+    if (orderType === "stop_limit" || orderType === "stop_market") {
+      const sp = Number(stopPriceVal);
+      if (!sp || sp <= 0) return;
+      tradeData.stopPrice = sp;
+    }
+
+    createTrade.mutate(tradeData, {
+      onSuccess: () => {
+        setAmount("");
+        setSliderValue(0);
+        onComplete?.();
+      },
+    });
   }
 
   function handleTypeChange(newType: "buy" | "sell") {
@@ -519,21 +555,48 @@ function TradePanel({
   }
 
   function toggleInputMode() {
-    if (numAmount > 0 && currentPrice > 0) {
+    if (numAmount > 0 && effectivePrice > 0) {
       if (inputMode === "usdt") {
-        setAmount((numAmount / currentPrice).toFixed(6));
+        setAmount((numAmount / effectivePrice).toFixed(6));
       } else {
-        setAmount((numAmount * currentPrice).toFixed(2));
+        setAmount((numAmount * effectivePrice).toFixed(2));
       }
     }
     setInputMode(prev => prev === "usdt" ? "token" : "usdt");
   }
 
+  const showLimitPrice = orderType === "limit" || orderType === "stop_limit";
+  const showStopPrice = orderType === "stop_limit" || orderType === "stop_market";
+
   return (
     <div data-testid="trade-panel">
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border">
         <span className="text-xs text-muted-foreground font-medium">Spot</span>
-        <span className="text-[10px] text-muted-foreground">Market Price</span>
+        <div className="relative">
+          <button
+            type="button"
+            className="flex items-center gap-1 text-[10px] text-muted-foreground cursor-pointer"
+            onClick={() => setOrderTypeOpen(!orderTypeOpen)}
+            data-testid="button-order-type-dropdown"
+          >
+            {orderTypeLabels[orderType]} <ChevronDown className="w-3 h-3" />
+          </button>
+          {orderTypeOpen && (
+            <div className="absolute right-0 top-full mt-1 bg-card border border-border rounded-md shadow-lg z-50 min-w-[120px]">
+              {(["market", "limit", "stop_limit", "stop_market"] as const).map((ot) => (
+                <button
+                  key={ot}
+                  type="button"
+                  className={`block w-full text-left px-3 py-1.5 text-xs hover-elevate ${orderType === ot ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                  onClick={() => { setOrderType(ot); setOrderTypeOpen(false); }}
+                  data-testid={`button-order-type-${ot}`}
+                >
+                  {orderTypeLabels[ot]}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
       <div className="p-3 space-y-3">
         <div className="flex gap-1">
@@ -557,17 +620,48 @@ function TradePanel({
           </Button>
         </div>
 
+        {showStopPrice && (
+          <div>
+            <label className="text-[10px] text-muted-foreground mb-0.5 block">Stop Price</label>
+            <Input
+              type="number"
+              step="any"
+              min="0"
+              value={stopPriceVal}
+              onChange={(e) => setStopPriceVal(e.target.value)}
+              placeholder="Stop trigger price"
+              className="font-mono text-xs bg-background/50 border-border h-8"
+              data-testid="input-stop-price"
+            />
+          </div>
+        )}
+
         <div>
           <label className="text-[10px] text-muted-foreground mb-0.5 block">Price</label>
-          <div className="flex items-center gap-2">
+          {showLimitPrice ? (
             <Input
-              value={`${formatPrice(currentPrice)}`}
-              disabled
-              className="font-mono text-xs bg-background/50 border-border h-8 flex-1"
-              data-testid="input-price"
+              type="number"
+              step="any"
+              min="0"
+              value={limitPriceVal}
+              onChange={(e) => setLimitPriceVal(e.target.value)}
+              placeholder="Limit price"
+              className="font-mono text-xs bg-background/50 border-border h-8"
+              data-testid="input-limit-price"
             />
-            <span className="text-[10px] text-muted-foreground whitespace-nowrap">Market Price</span>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <Input
+                value={`${formatPrice(currentPrice)}`}
+                disabled
+                className="font-mono text-xs bg-background/50 border-border h-8 flex-1"
+                data-testid="input-price"
+              />
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                {orderType === "stop_market" ? "Market" : "Market Price"}
+              </span>
+            </div>
+          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-2">
@@ -653,7 +747,7 @@ function TradePanel({
               </span>
               <span className="font-mono text-foreground" data-testid="text-max-value">
                 {type === "buy" ? (
-                  <>{currentPrice > 0 ? (maxBuyUsdt / currentPrice).toFixed(6) : "0.000000"} {coinName}</>
+                  <>{effectivePrice > 0 ? (maxBuyUsdt / effectivePrice).toFixed(6) : "0.000000"} {coinName}</>
                 ) : (
                   <>{maxSellUsdt.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDT</>
                 )}
@@ -691,6 +785,40 @@ function TradePanel({
             )}
           </Button>
         </form>
+
+        {pendingOrders.length > 0 && (
+          <div className="border-t border-border pt-2">
+            <div className="text-[10px] text-muted-foreground font-medium mb-1">Open Orders ({pendingOrders.length})</div>
+            <div className="space-y-1">
+              {pendingOrders.map((order: any) => (
+                <div key={order.id} className="flex items-center justify-between text-[10px] bg-background/50 rounded-md px-2 py-1.5">
+                  <div className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-1">
+                      <span className={order.type === "buy" ? "text-[#0ecb81] font-medium" : "text-[#f6465d] font-medium"}>
+                        {order.type.toUpperCase()}
+                      </span>
+                      <Badge variant="outline" className="text-[8px] px-1 py-0">
+                        {orderTypeLabels[order.orderType as string] || order.orderType}
+                      </Badge>
+                    </div>
+                    <span className="text-muted-foreground font-mono">
+                      {Number(order.quantity).toFixed(6)} @ ${formatPrice(order.limitPrice || order.stopPrice || order.price)}
+                    </span>
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => cancelOrder.mutate(order.id)}
+                    disabled={cancelOrder.isPending}
+                    data-testid={`button-cancel-order-${order.id}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

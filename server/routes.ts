@@ -276,6 +276,70 @@ function setupBinanceLiveStream(httpServer: Server) {
     }
   }, 30000);
 
+  setInterval(async () => {
+    if (tickerMap.size === 0) return;
+    try {
+      const pendingOrders = await storage.getPendingOrders();
+      for (const order of pendingOrders) {
+        const ticker = tickerMap.get(order.symbol);
+        if (!ticker) continue;
+        const currentPrice = parseFloat(ticker.lastPrice);
+
+        let shouldExecute = false;
+
+        if (order.orderType === "limit") {
+          if (order.type === "buy" && currentPrice <= (order.limitPrice || 0)) shouldExecute = true;
+          if (order.type === "sell" && currentPrice >= (order.limitPrice || 0)) shouldExecute = true;
+        } else if (order.orderType === "stop_market") {
+          if (order.type === "buy" && currentPrice >= (order.stopPrice || 0)) shouldExecute = true;
+          if (order.type === "sell" && currentPrice <= (order.stopPrice || 0)) shouldExecute = true;
+        } else if (order.orderType === "stop_limit") {
+          const stopTriggered =
+            (order.type === "buy" && currentPrice >= (order.stopPrice || 0)) ||
+            (order.type === "sell" && currentPrice <= (order.stopPrice || 0));
+          if (stopTriggered) {
+            if (order.type === "buy" && currentPrice <= (order.limitPrice || 0)) shouldExecute = true;
+            if (order.type === "sell" && currentPrice >= (order.limitPrice || 0)) shouldExecute = true;
+          }
+        }
+
+        if (shouldExecute) {
+          try {
+            const execPrice = order.orderType === "limit" ? (order.limitPrice || currentPrice) : currentPrice;
+            const total = order.quantity * execPrice;
+            const user = await storage.getUser(order.userId);
+            if (!user) continue;
+
+            if (order.type === "buy") {
+              const existing = await storage.getPortfolioItem(user.id, order.symbol);
+              if (existing) {
+                const newQty = existing.quantity + order.quantity;
+                const newAvg = ((existing.avgBuyPrice * existing.quantity) + total) / newQty;
+                await storage.upsertPortfolioItem(user.id, order.symbol, newQty, newAvg);
+              } else {
+                await storage.upsertPortfolioItem(user.id, order.symbol, order.quantity, execPrice);
+              }
+              const reservedTotal = order.quantity * (order.limitPrice || order.price);
+              const refundDiff = reservedTotal - total;
+              if (refundDiff > 0) {
+                await storage.updateUserBalance(user.id, user.balance + refundDiff);
+              }
+            } else {
+              await storage.updateUserBalance(user.id, user.balance + total);
+            }
+
+            await storage.updateTradeStatus(order.id, "completed", execPrice, total);
+            console.log(`[Order Execution] ${order.orderType} ${order.type} ${order.symbol} executed at $${execPrice}`);
+          } catch (execErr) {
+            console.error(`[Order Execution] Error executing order ${order.id}:`, execErr);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[Pending Order Check] Error:", err);
+    }
+  }, 3000);
+
   connectBinance();
 
   wss.on("connection", (ws) => {
@@ -365,18 +429,71 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.sendStatus(401);
 
     try {
-      const schema = z.object({
+      const tradeSchema = z.object({
         symbol: z.string(),
         type: z.enum(["buy", "sell"]),
         quantity: z.coerce.number().positive(),
         price: z.coerce.number().positive(),
+        orderType: z.enum(["market", "limit", "stop_limit", "stop_market"]).default("market"),
+        limitPrice: z.coerce.number().positive().optional(),
+        stopPrice: z.coerce.number().positive().optional(),
       });
-      const data = schema.parse(req.body);
-      const total = data.quantity * data.price;
+      const data = tradeSchema.parse(req.body);
       const user = req.user!;
+
+      if (data.orderType === "limit" && !data.limitPrice) {
+        return res.status(400).json({ message: "Limit price is required for limit orders" });
+      }
+      if (data.orderType === "stop_market" && !data.stopPrice) {
+        return res.status(400).json({ message: "Stop price is required for stop market orders" });
+      }
+      if (data.orderType === "stop_limit" && (!data.limitPrice || !data.stopPrice)) {
+        return res.status(400).json({ message: "Both limit price and stop price are required for stop limit orders" });
+      }
+
+      const execPrice = data.orderType === "limit" ? data.limitPrice! : data.price;
+      const total = data.quantity * execPrice;
 
       if (total < 5) {
         return res.status(400).json({ message: "Minimum order amount is 5 USDT" });
+      }
+
+      if (data.orderType !== "market") {
+        if (data.type === "buy") {
+          const reserveTotal = data.quantity * (data.limitPrice || data.price);
+          if (user.balance < reserveTotal) {
+            return res.status(400).json({ message: "Insufficient balance" });
+          }
+          await storage.updateUserBalance(user.id, user.balance - reserveTotal);
+        } else {
+          const existing = await storage.getPortfolioItem(user.id, data.symbol);
+          if (!existing || existing.quantity < data.quantity) {
+            return res.status(400).json({ message: "Insufficient holdings" });
+          }
+          const newQty = existing.quantity - data.quantity;
+          if (newQty <= 0) {
+            await storage.upsertPortfolioItem(user.id, data.symbol, 0, 0);
+          } else {
+            await storage.upsertPortfolioItem(user.id, data.symbol, newQty, existing.avgBuyPrice);
+          }
+        }
+
+        const trade = await storage.createTrade({
+          symbol: data.symbol,
+          type: data.type,
+          quantity: data.quantity,
+          price: data.price,
+          userId: user.id,
+          total,
+          status: "pending",
+          orderType: data.orderType,
+          limitPrice: data.limitPrice || null,
+          stopPrice: data.stopPrice || null,
+        });
+
+        const updatedUser = await storage.getUser(user.id);
+        res.status(201).json({ trade, user: updatedUser });
+        return;
       }
 
       if (data.type === "buy") {
@@ -408,10 +525,14 @@ export async function registerRoutes(
       }
 
       const trade = await storage.createTrade({
-        ...data,
+        symbol: data.symbol,
+        type: data.type,
+        quantity: data.quantity,
+        price: data.price,
         userId: user.id,
         total,
         status: "completed",
+        orderType: "market",
       });
 
       const updatedUser = await storage.getUser(user.id);
@@ -423,6 +544,42 @@ export async function registerRoutes(
       console.error("Trade error:", e);
       res.status(500).json({ message: "Internal server error" });
     }
+  });
+
+  app.get("/api/trades/pending", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const allPending = await storage.getPendingOrders();
+    const userPending = allPending.filter(t => t.userId === req.user!.id);
+    res.json(userPending);
+  });
+
+  app.delete("/api/trades/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const tradeId = parseInt(req.params.id);
+    const allPending = await storage.getPendingOrders();
+    const order = allPending.find(t => t.id === tradeId && t.userId === req.user!.id);
+    if (!order) {
+      return res.status(404).json({ message: "Pending order not found" });
+    }
+
+    if (order.type === "buy") {
+      const refund = order.quantity * (order.limitPrice || order.price);
+      const user = await storage.getUser(order.userId);
+      if (user) {
+        await storage.updateUserBalance(user.id, user.balance + refund);
+      }
+    } else {
+      const user = await storage.getUser(order.userId);
+      if (user) {
+        const existing = await storage.getPortfolioItem(user.id, order.symbol);
+        const currentQty = existing ? existing.quantity : 0;
+        const avgPrice = existing ? existing.avgBuyPrice : order.price;
+        await storage.upsertPortfolioItem(user.id, order.symbol, currentQty + order.quantity, avgPrice);
+      }
+    }
+
+    await storage.updateTradeStatus(tradeId, "cancelled");
+    res.json({ message: "Order cancelled" });
   });
 
   app.get("/api/portfolio", async (req, res) => {

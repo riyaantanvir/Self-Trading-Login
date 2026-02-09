@@ -41,18 +41,31 @@ export function useCreateTrade() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (data: { symbol: string; type: string; quantity: number; price: number }) => {
+    mutationFn: async (data: {
+      symbol: string;
+      type: string;
+      quantity: number;
+      price: number;
+      orderType?: string;
+      limitPrice?: number;
+      stopPrice?: number;
+    }) => {
       const res = await apiRequest("POST", "/api/trades", data);
       return await res.json();
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/pending"] });
       queryClient.invalidateQueries({ queryKey: ["/api/portfolio"] });
       queryClient.invalidateQueries({ queryKey: ["/api/portfolio/today-pnl"] });
       queryClient.setQueryData(["/api/user"], data.user);
+      const isPending = data.trade.status === "pending";
+      const orderLabel = (data.trade.orderType || "market").replace("_", " ");
       toast({
-        title: "Trade Executed",
-        description: `${data.trade.type.toUpperCase()} ${data.trade.quantity} ${data.trade.symbol} at $${Number(data.trade.price).toLocaleString()}`,
+        title: isPending ? "Order Placed" : "Trade Executed",
+        description: isPending
+          ? `${orderLabel.toUpperCase()} ${data.trade.type.toUpperCase()} ${data.trade.quantity} ${data.trade.symbol} placed`
+          : `${data.trade.type.toUpperCase()} ${data.trade.quantity} ${data.trade.symbol} at $${Number(data.trade.price).toLocaleString()}`,
       });
     },
     onError: (error: Error) => {
@@ -61,6 +74,40 @@ export function useCreateTrade() {
         description: error.message,
         variant: "destructive",
       });
+    },
+  });
+}
+
+export function usePendingOrders() {
+  return useQuery({
+    queryKey: ["/api/trades/pending"],
+    queryFn: async () => {
+      const res = await fetch("/api/trades/pending", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch pending orders");
+      return await res.json();
+    },
+    refetchInterval: 3000,
+  });
+}
+
+export function useCancelOrder() {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async (tradeId: number) => {
+      const res = await apiRequest("DELETE", `/api/trades/${tradeId}`);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/trades/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      toast({ title: "Order Cancelled" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to cancel order", description: error.message, variant: "destructive" });
     },
   });
 }

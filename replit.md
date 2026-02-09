@@ -62,7 +62,16 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - MACD (12,26,9): Toggle checkbox, renders in separate sub-panel with MACD line (blue), signal line (orange), histogram bars (green/red)
 - All indicator sub-charts are time-synced with the main candlestick chart
 
+## Order Types
+- Market: Executes immediately at current market price
+- Limit: Places pending order that executes when price reaches limit price (buy below, sell above)
+- Stop Market: Triggers market order when stop price is reached (buy above, sell below)
+- Stop Limit: Triggers limit order when stop price is reached, then executes at limit price
+- Pending orders checked every 3s against live ticker prices; balance/holdings reserved on placement
+- Cancel returns reserved balance (buy) or holdings (sell)
+
 ## Recent Changes
+- Feb 2026: Added advanced order types (Market, Limit, Stop Limit, Stop Market) with pending order management, server-side execution, and cancel support
 - Feb 2026: Added Fear & Greed Index tab on Markets page with visual gauge, today/yesterday/7d comparison, and 30-day history bar chart (data from alternative.me API, cached 5min server-side)
 - Feb 2026: Added RSI and MACD indicators with separate sub-panels and time-synced scrolling
 - Feb 2026: Added Bollinger Bands indicator to trading charts with toggle checkbox on interval bar
