@@ -1,12 +1,18 @@
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
-import { useTickers } from "@/hooks/use-trades";
+import { useTickers, useWatchlist, useAddToWatchlist, useRemoveFromWatchlist } from "@/hooks/use-trades";
 import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
 import { LayoutShell } from "@/components/layout-shell";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, ArrowUpDown, Wifi, WifiOff } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Loader2, Search, ArrowUpDown, Wifi, WifiOff, MoreVertical, Star, Eye } from "lucide-react";
 
 interface Ticker {
   symbol: string;
@@ -21,16 +27,28 @@ interface Ticker {
 export default function Dashboard() {
   const { data: tickers, isLoading } = useTickers();
   const { connected, priceFlashes } = useBinanceWebSocket();
+  const { data: watchlistData } = useWatchlist();
+  const addToWatchlist = useAddToWatchlist();
+  const removeFromWatchlist = useRemoveFromWatchlist();
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<"symbol" | "lastPrice" | "priceChangePercent" | "quoteVolume">("quoteVolume");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [activeTab, setActiveTab] = useState<"all" | "watchlist">("all");
   const [, navigate] = useLocation();
+
+  const watchlistSymbols = useMemo(() => {
+    if (!watchlistData) return new Set<string>();
+    return new Set((watchlistData as any[]).map((w: any) => w.symbol));
+  }, [watchlistData]);
 
   const filteredTickers = useMemo(() => {
     if (!tickers) return [];
     let list = (tickers as Ticker[]).filter((t) =>
       t.symbol.toLowerCase().includes(search.toLowerCase())
     );
+    if (activeTab === "watchlist") {
+      list = list.filter((t) => watchlistSymbols.has(t.symbol));
+    }
     list.sort((a, b) => {
       let va: number, vb: number;
       if (sortField === "symbol") {
@@ -41,7 +59,7 @@ export default function Dashboard() {
       return sortDir === "asc" ? va - vb : vb - va;
     });
     return list;
-  }, [tickers, search, sortField, sortDir]);
+  }, [tickers, search, sortField, sortDir, activeTab, watchlistSymbols]);
 
   function handleSort(field: typeof sortField) {
     if (sortField === field) {
@@ -54,6 +72,15 @@ export default function Dashboard() {
 
   function openToken(ticker: Ticker) {
     navigate(`/trade/${ticker.symbol.toLowerCase()}`);
+  }
+
+  function toggleWatchlist(symbol: string, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (watchlistSymbols.has(symbol)) {
+      removeFromWatchlist.mutate(symbol);
+    } else {
+      addToWatchlist.mutate(symbol);
+    }
   }
 
   function formatPrice(price: string) {
@@ -104,6 +131,33 @@ export default function Dashboard() {
           </div>
         </div>
 
+        <div className="flex items-center gap-2 mb-4">
+          <Button
+            variant={activeTab === "all" ? "secondary" : "ghost"}
+            size="sm"
+            className={`text-xs toggle-elevate ${activeTab === "all" ? "toggle-elevated" : ""}`}
+            onClick={() => setActiveTab("all")}
+            data-testid="button-tab-all"
+          >
+            All Coins
+          </Button>
+          <Button
+            variant={activeTab === "watchlist" ? "secondary" : "ghost"}
+            size="sm"
+            className={`text-xs gap-1 toggle-elevate ${activeTab === "watchlist" ? "toggle-elevated" : ""}`}
+            onClick={() => setActiveTab("watchlist")}
+            data-testid="button-tab-watchlist"
+          >
+            <Star className="w-3 h-3" />
+            Watchlist
+            {watchlistSymbols.size > 0 && (
+              <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0" data-testid="badge-watchlist-count">
+                {watchlistSymbols.size}
+              </Badge>
+            )}
+          </Button>
+        </div>
+
         <div className="rounded-md border border-border overflow-hidden bg-card">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -131,7 +185,7 @@ export default function Dashboard() {
                       24h Volume <ArrowUpDown className="w-3 h-3" />
                     </button>
                   </th>
-                  <th className="text-right p-3 text-xs text-muted-foreground font-medium">Action</th>
+                  <th className="text-right p-3 text-xs text-muted-foreground font-medium w-12">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -145,6 +199,7 @@ export default function Dashboard() {
                     : flash === "down"
                     ? "bg-[#f6465d]/15"
                     : "";
+                  const isWatched = watchlistSymbols.has(ticker.symbol);
                   return (
                     <tr
                       key={ticker.symbol}
@@ -154,6 +209,7 @@ export default function Dashboard() {
                     >
                       <td className="p-3">
                         <div className="flex items-center gap-2">
+                          {isWatched && <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 flex-shrink-0" />}
                           <span className="font-semibold text-foreground">{coinName}</span>
                           <span className="text-xs text-muted-foreground">/USDT</span>
                         </div>
@@ -180,18 +236,39 @@ export default function Dashboard() {
                         ${formatVolume(ticker.quoteVolume)}
                       </td>
                       <td className="p-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openToken(ticker);
-                          }}
-                          data-testid={`button-trade-${ticker.symbol}`}
-                        >
-                          Trade
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={(e) => e.stopPropagation()}
+                              data-testid={`button-actions-${ticker.symbol}`}
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openToken(ticker);
+                              }}
+                              className="cursor-pointer"
+                              data-testid={`menu-trade-${ticker.symbol}`}
+                            >
+                              <Eye className="w-4 h-4 mr-2" />
+                              View {coinName}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => toggleWatchlist(ticker.symbol, e as any)}
+                              className="cursor-pointer"
+                              data-testid={`menu-watchlist-${ticker.symbol}`}
+                            >
+                              <Star className={`w-4 h-4 mr-2 ${isWatched ? "text-yellow-500 fill-yellow-500" : ""}`} />
+                              {isWatched ? "Remove from Watchlist" : "Add to Watchlist"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   );
@@ -199,7 +276,9 @@ export default function Dashboard() {
                 {filteredTickers.length === 0 && (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-muted-foreground">
-                      No coins found matching your search.
+                      {activeTab === "watchlist"
+                        ? "Your watchlist is empty. Add coins from the All Coins tab."
+                        : "No coins found matching your search."}
                     </td>
                   </tr>
                 )}

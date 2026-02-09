@@ -34,14 +34,19 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `POST /api/logout` - Logout
 - `GET /api/user` - Current user
 - `GET /api/trades` - User trades
-- `POST /api/trades` - Execute trade (buy/sell)
+- `POST /api/trades` - Execute trade (buy/sell, min 5 USDT)
 - `GET /api/portfolio` - User portfolio holdings
+- `GET /api/watchlist` - User's watchlisted coins
+- `POST /api/watchlist` - Add coin to watchlist (body: { symbol })
+- `DELETE /api/watchlist/:symbol` - Remove coin from watchlist
 
 ## Admin Credentials
 - Username: Admin
 - Password: Admin
 
 ## Recent Changes
+- Feb 2026: Added watchlist feature with database persistence, 3-dot action menu on dashboard
+- Feb 2026: Improved trade panel with USDT/Token toggle, min 5 USDT, sell shows holdings
 - Feb 2026: Added token detail page with TradingView candlestick charts, order book, trade panel
 - Feb 2026: Implemented real-time WebSocket data from Binance production API (data-stream.binance.vision)
 - Feb 2026: Built initial Binance-style trading platform

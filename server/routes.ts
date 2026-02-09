@@ -270,5 +270,25 @@ export async function registerRoutes(
     res.json(items.filter(i => i.quantity > 0));
   });
 
+  app.get("/api/watchlist", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const items = await storage.getWatchlist(req.user!.id);
+    res.json(items);
+  });
+
+  app.post("/api/watchlist", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const { symbol } = req.body;
+    if (!symbol) return res.status(400).json({ message: "Symbol required" });
+    const item = await storage.addToWatchlist(req.user!.id, symbol);
+    res.json(item);
+  });
+
+  app.delete("/api/watchlist/:symbol", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    await storage.removeFromWatchlist(req.user!.id, req.params.symbol);
+    res.json({ success: true });
+  });
+
   return httpServer;
 }

@@ -63,3 +63,43 @@ export function useCreateTrade() {
     },
   });
 }
+
+export function useWatchlist() {
+  return useQuery({
+    queryKey: ["/api/watchlist"],
+    queryFn: async () => {
+      const res = await fetch("/api/watchlist", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch watchlist");
+      return await res.json();
+    },
+  });
+}
+
+export function useAddToWatchlist() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (symbol: string) => {
+      const res = await apiRequest("POST", "/api/watchlist", { symbol });
+      return await res.json();
+    },
+    onSuccess: (_data, symbol) => {
+      qc.invalidateQueries({ queryKey: ["/api/watchlist"] });
+      toast({ title: "Added to Watchlist", description: `${symbol.replace("USDT", "")}/USDT added to your watchlist` });
+    },
+  });
+}
+
+export function useRemoveFromWatchlist() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (symbol: string) => {
+      await apiRequest("DELETE", `/api/watchlist/${symbol}`);
+    },
+    onSuccess: (_data, symbol) => {
+      qc.invalidateQueries({ queryKey: ["/api/watchlist"] });
+      toast({ title: "Removed from Watchlist", description: `${symbol.replace("USDT", "")}/USDT removed from your watchlist` });
+    },
+  });
+}

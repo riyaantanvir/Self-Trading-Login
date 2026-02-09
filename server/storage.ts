@@ -1,4 +1,4 @@
-import { users, trades, portfolio, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio } from "@shared/schema";
+import { users, trades, portfolio, watchlist, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist } from "@shared/schema";
 import { db } from "./db";
 import { eq, and } from "drizzle-orm";
 
@@ -14,6 +14,10 @@ export interface IStorage {
   getPortfolio(userId: number): Promise<Portfolio[]>;
   getPortfolioItem(userId: number, symbol: string): Promise<Portfolio | undefined>;
   upsertPortfolioItem(userId: number, symbol: string, quantity: number, avgBuyPrice: number): Promise<Portfolio>;
+
+  getWatchlist(userId: number): Promise<Watchlist[]>;
+  addToWatchlist(userId: number, symbol: string): Promise<Watchlist>;
+  removeFromWatchlist(userId: number, symbol: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -70,6 +74,24 @@ export class DatabaseStorage implements IStorage {
         .returning();
       return created;
     }
+  }
+  async getWatchlist(userId: number): Promise<Watchlist[]> {
+    return await db.select().from(watchlist).where(eq(watchlist.userId, userId));
+  }
+
+  async addToWatchlist(userId: number, symbol: string): Promise<Watchlist> {
+    const existing = await db.select().from(watchlist).where(
+      and(eq(watchlist.userId, userId), eq(watchlist.symbol, symbol))
+    );
+    if (existing.length > 0) return existing[0];
+    const [item] = await db.insert(watchlist).values({ userId, symbol }).returning();
+    return item;
+  }
+
+  async removeFromWatchlist(userId: number, symbol: string): Promise<void> {
+    await db.delete(watchlist).where(
+      and(eq(watchlist.userId, userId), eq(watchlist.symbol, symbol))
+    );
   }
 }
 

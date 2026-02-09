@@ -30,9 +30,16 @@ export const portfolio = pgTable("portfolio", {
   avgBuyPrice: doublePrecision("avg_buy_price").notNull().default(0),
 });
 
+export const watchlist = pgTable("watchlist", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  symbol: text("symbol").notNull(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertTradeSchema = createInsertSchema(trades).omit({ id: true, userId: true, timestamp: true, total: true });
 export const insertPortfolioSchema = createInsertSchema(portfolio).omit({ id: true });
+export const insertWatchlistSchema = createInsertSchema(watchlist).omit({ id: true });
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -40,3 +47,5 @@ export type Trade = typeof trades.$inferSelect;
 export type InsertTrade = z.infer<typeof insertTradeSchema>;
 export type Portfolio = typeof portfolio.$inferSelect;
 export type InsertPortfolio = z.infer<typeof insertPortfolioSchema>;
+export type Watchlist = typeof watchlist.$inferSelect;
+export type InsertWatchlist = z.infer<typeof insertWatchlistSchema>;
