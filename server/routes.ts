@@ -5,6 +5,26 @@ import { setupAuth, hashPassword } from "./auth";
 import { z } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
 
+async function sendTelegramMessage(botToken: string, chatId: string, message: string): Promise<boolean> {
+  try {
+    const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: "HTML" }),
+    });
+    if (!res.ok) {
+      const err = await res.text();
+      console.error("[Telegram] Failed to send:", err);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[Telegram] Error:", err);
+    return false;
+  }
+}
+
 const TRACKED_SYMBOLS = [
   "btcusdt", "ethusdt", "bnbusdt", "xrpusdt", "solusdt",
   "adausdt", "dogeusdt", "dotusdt", "trxusdt", "linkusdt",
@@ -139,6 +159,23 @@ function setupBinanceLiveStream(httpServer: Server) {
               currentPrice,
             },
           });
+
+          if (alert.notifyTelegram) {
+            try {
+              const alertUser = await storage.getUser(alert.userId);
+              if (alertUser?.telegramBotToken && alertUser?.telegramChatId) {
+                const coin = alert.symbol.replace("USDT", "");
+                const msg = `<b>Price Alert Triggered!</b>\n\n` +
+                  `<b>${coin}/USDT</b> is now ${alert.direction === "above" ? "above" : "below"} your target.\n\n` +
+                  `Target: $${Number(alert.targetPrice).toLocaleString()}\n` +
+                  `Current: $${Number(currentPrice).toLocaleString()}\n\n` +
+                  `- Self Treding`;
+                await sendTelegramMessage(alertUser.telegramBotToken, alertUser.telegramChatId, msg);
+              }
+            } catch (tgErr) {
+              console.error("[Telegram] Alert notification error:", tgErr);
+            }
+          }
         }
       }
     } catch (err) {
@@ -321,6 +358,43 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
+  app.post("/api/user/telegram", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const schema = z.object({
+        telegramBotToken: z.string(),
+        telegramChatId: z.string(),
+      });
+      const data = schema.parse(req.body);
+      await storage.updateUserTelegram(req.user!.id, data.telegramBotToken, data.telegramChatId);
+      const updatedUser = await storage.getUser(req.user!.id);
+      res.json(updatedUser);
+    } catch (e) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ message: e.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/user/telegram/test", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = await storage.getUser(req.user!.id);
+    if (!user?.telegramBotToken || !user?.telegramChatId) {
+      return res.status(400).json({ message: "Telegram settings not configured" });
+    }
+    const success = await sendTelegramMessage(
+      user.telegramBotToken,
+      user.telegramChatId,
+      `<b>Test Message</b>\n\nYour Telegram alerts are working! You'll receive price alert notifications here.\n\n- Self Treding`
+    );
+    if (success) {
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ message: "Failed to send test message. Check your bot token and chat ID." });
+    }
+  });
+
   app.get("/api/alerts", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const alerts = await storage.getPriceAlerts(req.user!.id);
@@ -334,6 +408,7 @@ export async function registerRoutes(
         symbol: z.string().min(1),
         targetPrice: z.coerce.number().positive(),
         direction: z.enum(["above", "below"]),
+        notifyTelegram: z.boolean().optional().default(false),
       });
       const data = schema.parse(req.body);
       const alert = await storage.createPriceAlert(req.user!.id, data);

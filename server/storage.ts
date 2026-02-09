@@ -19,9 +19,11 @@ export interface IStorage {
   addToWatchlist(userId: number, symbol: string): Promise<Watchlist>;
   removeFromWatchlist(userId: number, symbol: string): Promise<void>;
 
+  updateUserTelegram(id: number, telegramBotToken: string, telegramChatId: string): Promise<void>;
+
   getPriceAlerts(userId: number): Promise<PriceAlert[]>;
   getActivePriceAlerts(): Promise<PriceAlert[]>;
-  createPriceAlert(userId: number, data: { symbol: string; targetPrice: number; direction: string }): Promise<PriceAlert>;
+  createPriceAlert(userId: number, data: { symbol: string; targetPrice: number; direction: string; notifyTelegram?: boolean }): Promise<PriceAlert>;
   deletePriceAlert(userId: number, alertId: number): Promise<void>;
   triggerPriceAlert(alertId: number): Promise<void>;
 }
@@ -99,6 +101,10 @@ export class DatabaseStorage implements IStorage {
       and(eq(watchlist.userId, userId), eq(watchlist.symbol, symbol))
     );
   }
+  async updateUserTelegram(id: number, telegramBotToken: string, telegramChatId: string): Promise<void> {
+    await db.update(users).set({ telegramBotToken, telegramChatId }).where(eq(users.id, id));
+  }
+
   async getPriceAlerts(userId: number): Promise<PriceAlert[]> {
     return await db.select().from(priceAlerts).where(eq(priceAlerts.userId, userId));
   }
@@ -109,7 +115,7 @@ export class DatabaseStorage implements IStorage {
     );
   }
 
-  async createPriceAlert(userId: number, data: { symbol: string; targetPrice: number; direction: string }): Promise<PriceAlert> {
+  async createPriceAlert(userId: number, data: { symbol: string; targetPrice: number; direction: string; notifyTelegram?: boolean }): Promise<PriceAlert> {
     const [alert] = await db.insert(priceAlerts).values({
       userId,
       symbol: data.symbol,
@@ -117,6 +123,7 @@ export class DatabaseStorage implements IStorage {
       direction: data.direction,
       isActive: true,
       triggered: false,
+      notifyTelegram: data.notifyTelegram ?? false,
     }).returning();
     return alert;
   }

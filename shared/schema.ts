@@ -9,6 +9,8 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   isAdmin: boolean("is_admin").default(false).notNull(),
   balance: doublePrecision("balance").default(100000).notNull(),
+  telegramBotToken: text("telegram_bot_token").default(""),
+  telegramChatId: text("telegram_chat_id").default(""),
 });
 
 export const trades = pgTable("trades", {
@@ -45,6 +47,7 @@ export const priceAlerts = pgTable("price_alerts", {
   direction: text("direction").notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   triggered: boolean("triggered").default(false).notNull(),
+  notifyTelegram: boolean("notify_telegram").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   triggeredAt: timestamp("triggered_at"),
 });

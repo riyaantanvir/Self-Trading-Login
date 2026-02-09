@@ -1,21 +1,34 @@
 import { useState } from "react";
 import { LayoutShell } from "@/components/layout-shell";
-import { useAlerts, useCreateAlert, useDeleteAlert, useTickers } from "@/hooks/use-trades";
+import { useAlerts, useCreateAlert, useDeleteAlert, useTickers, useSaveTelegramSettings, useTestTelegram } from "@/hooks/use-trades";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Bell, BellOff, Trash2, ArrowUp, ArrowDown, Plus, X, Check } from "lucide-react";
+import { Bell, BellOff, Trash2, ArrowUp, ArrowDown, Plus, X, Check, Send, Settings } from "lucide-react";
+import { SiTelegram } from "react-icons/si";
 
 export default function AlertsPage() {
+  const { user } = useAuth();
   const { data: alerts, isLoading } = useAlerts();
   const { data: tickers } = useTickers();
   const createAlert = useCreateAlert();
   const deleteAlert = useDeleteAlert();
+  const saveTelegram = useSaveTelegramSettings();
+  const testTelegram = useTestTelegram();
+
   const [showCreate, setShowCreate] = useState(false);
+  const [showTgSettings, setShowTgSettings] = useState(false);
   const [symbol, setSymbol] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
   const [direction, setDirection] = useState<"above" | "below">("above");
+  const [notifyTelegram, setNotifyTelegram] = useState(false);
   const [search, setSearch] = useState("");
+
+  const [tgBotToken, setTgBotToken] = useState((user as any)?.telegramBotToken || "");
+  const [tgChatId, setTgChatId] = useState((user as any)?.telegramChatId || "");
+
+  const hasTelegramSetup = !!(user as any)?.telegramBotToken && !!(user as any)?.telegramChatId;
 
   const tickerList = (tickers as any[] | undefined) || [];
   const filteredTickers = tickerList
@@ -30,17 +43,22 @@ export default function AlertsPage() {
   const handleCreate = () => {
     if (!symbol || !targetPrice) return;
     createAlert.mutate(
-      { symbol, targetPrice: parseFloat(targetPrice), direction },
+      { symbol, targetPrice: parseFloat(targetPrice), direction, notifyTelegram: notifyTelegram && hasTelegramSetup },
       {
         onSuccess: () => {
           setShowCreate(false);
           setSymbol("");
           setTargetPrice("");
           setDirection("above");
+          setNotifyTelegram(false);
           setSearch("");
         },
       }
     );
+  };
+
+  const handleSaveTelegram = () => {
+    saveTelegram.mutate({ telegramBotToken: tgBotToken, telegramChatId: tgChatId });
   };
 
   const getCurrentPrice = (sym: string) => {
@@ -56,16 +74,85 @@ export default function AlertsPage() {
             <Bell className="w-5 h-5 text-[#f0b90b]" />
             <h1 className="text-xl font-bold" data-testid="text-alerts-title">Price Alerts</h1>
           </div>
-          <Button
-            size="sm"
-            className="gap-2"
-            onClick={() => setShowCreate(!showCreate)}
-            data-testid="button-create-alert"
-          >
-            {showCreate ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-            {showCreate ? "Cancel" : "New Alert"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={showTgSettings ? "secondary" : "outline"}
+              size="sm"
+              className="gap-2"
+              onClick={() => setShowTgSettings(!showTgSettings)}
+              data-testid="button-telegram-settings"
+            >
+              <SiTelegram className="w-4 h-4" />
+              Telegram
+            </Button>
+            <Button
+              size="sm"
+              className="gap-2"
+              onClick={() => setShowCreate(!showCreate)}
+              data-testid="button-create-alert"
+            >
+              {showCreate ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              {showCreate ? "Cancel" : "New Alert"}
+            </Button>
+          </div>
         </div>
+
+        {showTgSettings && (
+          <Card className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <SiTelegram className="w-5 h-5 text-[#26A5E4]" />
+              <div className="text-sm font-medium">Telegram Settings</div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Connect your Telegram bot to receive price alert notifications. Create a bot via @BotFather on Telegram, then enter your bot token and chat ID below.
+            </p>
+            <div className="space-y-2">
+              <Input
+                placeholder="Bot Token (from @BotFather)"
+                value={tgBotToken}
+                onChange={(e) => setTgBotToken(e.target.value)}
+                data-testid="input-telegram-bot-token"
+              />
+              <Input
+                placeholder="Chat ID (your Telegram user/group ID)"
+                value={tgChatId}
+                onChange={(e) => setTgChatId(e.target.value)}
+                data-testid="input-telegram-chat-id"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="gap-2"
+                onClick={handleSaveTelegram}
+                disabled={saveTelegram.isPending || !tgBotToken || !tgChatId}
+                data-testid="button-save-telegram"
+              >
+                <Check className="w-4 h-4" />
+                {saveTelegram.isPending ? "Saving..." : "Save"}
+              </Button>
+              {hasTelegramSetup && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => testTelegram.mutate()}
+                  disabled={testTelegram.isPending}
+                  data-testid="button-test-telegram"
+                >
+                  <Send className="w-4 h-4" />
+                  {testTelegram.isPending ? "Sending..." : "Send Test"}
+                </Button>
+              )}
+            </div>
+            {hasTelegramSetup && (
+              <div className="flex items-center gap-2 text-xs text-[#0ecb81]">
+                <Check className="w-3 h-3" />
+                Telegram connected
+              </div>
+            )}
+          </Card>
+        )}
 
         {showCreate && (
           <Card className="p-4 space-y-3">
@@ -140,6 +227,36 @@ export default function AlertsPage() {
                   data-testid="input-target-price"
                 />
 
+                {hasTelegramSetup && (
+                  <button
+                    className={`w-full flex items-center gap-3 p-3 rounded-md border transition-colors ${
+                      notifyTelegram
+                        ? "border-[#26A5E4] bg-[#26A5E4]/10"
+                        : "border-border"
+                    }`}
+                    onClick={() => setNotifyTelegram(!notifyTelegram)}
+                    data-testid="button-toggle-telegram"
+                  >
+                    <SiTelegram className={`w-5 h-5 ${notifyTelegram ? "text-[#26A5E4]" : "text-muted-foreground"}`} />
+                    <div className="text-left flex-1">
+                      <div className="text-sm font-medium">Notify on Telegram</div>
+                      <div className="text-xs text-muted-foreground">Send alert to your Telegram when triggered</div>
+                    </div>
+                    <div className={`w-10 h-6 rounded-full transition-colors flex items-center ${
+                      notifyTelegram ? "bg-[#26A5E4] justify-end" : "bg-muted justify-start"
+                    }`}>
+                      <div className="w-5 h-5 rounded-full bg-white mx-0.5 shadow-sm" />
+                    </div>
+                  </button>
+                )}
+
+                {!hasTelegramSetup && (
+                  <div className="flex items-center gap-2 p-3 rounded-md border border-border text-xs text-muted-foreground">
+                    <SiTelegram className="w-4 h-4" />
+                    <span>Set up Telegram above to enable notifications</span>
+                  </div>
+                )}
+
                 <Button
                   className="w-full gap-2"
                   onClick={handleCreate}
@@ -186,7 +303,12 @@ export default function AlertsPage() {
                         )}
                       </div>
                       <div>
-                        <div className="font-medium text-sm">{coin}/USDT</div>
+                        <div className="font-medium text-sm flex items-center gap-2">
+                          {coin}/USDT
+                          {alert.notifyTelegram && (
+                            <SiTelegram className="w-3 h-3 text-[#26A5E4]" />
+                          )}
+                        </div>
                         <div className="text-xs text-muted-foreground">
                           {alert.direction === "above" ? "Above" : "Below"} ${Number(alert.targetPrice).toLocaleString()}
                         </div>
@@ -234,7 +356,12 @@ export default function AlertsPage() {
                         <BellOff className="w-4 h-4 text-muted-foreground" />
                       </div>
                       <div>
-                        <div className="font-medium text-sm">{coin}/USDT</div>
+                        <div className="font-medium text-sm flex items-center gap-2">
+                          {coin}/USDT
+                          {alert.notifyTelegram && (
+                            <SiTelegram className="w-3 h-3 text-[#26A5E4]" />
+                          )}
+                        </div>
                         <div className="text-xs text-muted-foreground">
                           {alert.direction === "above" ? "Above" : "Below"} ${Number(alert.targetPrice).toLocaleString()}
                           {alert.triggeredAt && (

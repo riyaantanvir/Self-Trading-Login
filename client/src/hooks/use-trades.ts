@@ -119,7 +119,7 @@ export function useCreateAlert() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: async (data: { symbol: string; targetPrice: number; direction: string }) => {
+    mutationFn: async (data: { symbol: string; targetPrice: number; direction: string; notifyTelegram?: boolean }) => {
       const res = await apiRequest("POST", "/api/alerts", data);
       return await res.json();
     },
@@ -146,6 +146,40 @@ export function useDeleteAlert() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/alerts"] });
       toast({ title: "Alert Deleted" });
+    },
+  });
+}
+
+export function useSaveTelegramSettings() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (data: { telegramBotToken: string; telegramChatId: string }) => {
+      const res = await apiRequest("POST", "/api/user/telegram", data);
+      return await res.json();
+    },
+    onSuccess: (updatedUser) => {
+      qc.setQueryData(["/api/user"], updatedUser);
+      toast({ title: "Telegram Settings Saved" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to save settings", description: error.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useTestTelegram() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/user/telegram/test");
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Test message sent!", description: "Check your Telegram for the test message." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Test failed", description: error.message, variant: "destructive" });
     },
   });
 }
