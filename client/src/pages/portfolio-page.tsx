@@ -1,6 +1,16 @@
-import { usePortfolio, useTickers } from "@/hooks/use-trades";
+import { useState } from "react";
+import { usePortfolio, useTickers, useCreateTrade } from "@/hooks/use-trades";
 import { LayoutShell } from "@/components/layout-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Loader2, TrendingUp, TrendingDown, Wallet } from "lucide-react";
 
 interface Ticker {
@@ -19,6 +29,14 @@ interface PortfolioItem {
 export default function PortfolioPage() {
   const { data: holdings, isLoading: loadingPortfolio } = usePortfolio();
   const { data: tickers, isLoading: loadingTickers } = useTickers();
+  const createTrade = useCreateTrade();
+  const [sellTarget, setSellTarget] = useState<{
+    symbol: string;
+    coinName: string;
+    quantity: number;
+    currentPrice: number;
+    currentValue: number;
+  } | null>(null);
 
   if (loadingPortfolio || loadingTickers) {
     return (
@@ -48,6 +66,23 @@ export default function PortfolioPage() {
 
   const totalValue = portfolioItems.reduce((sum, i) => sum + i.currentValue, 0);
   const totalPnL = portfolioItems.reduce((sum, i) => sum + i.pnl, 0);
+
+  const handleSellAll = () => {
+    if (!sellTarget) return;
+    createTrade.mutate(
+      {
+        symbol: sellTarget.symbol,
+        type: "sell",
+        quantity: sellTarget.quantity,
+        price: sellTarget.currentPrice,
+      },
+      {
+        onSettled: () => {
+          setSellTarget(null);
+        },
+      }
+    );
+  };
 
   return (
     <LayoutShell>
@@ -100,6 +135,7 @@ export default function PortfolioPage() {
                   <th className="text-right p-3 text-xs text-muted-foreground font-medium">Current</th>
                   <th className="text-right p-3 text-xs text-muted-foreground font-medium">Value</th>
                   <th className="text-right p-3 text-xs text-muted-foreground font-medium">P&L</th>
+                  <th className="text-center p-3 text-xs text-muted-foreground font-medium">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -124,12 +160,34 @@ export default function PortfolioPage() {
                             {item.pnlPercent >= 0 ? "+" : ""}{item.pnlPercent.toFixed(2)}%
                           </div>
                         </td>
+                        <td className="p-3 text-center">
+                          {item.quantity > 0 ? (
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              data-testid={`button-sell-all-${item.symbol}`}
+                              onClick={() =>
+                                setSellTarget({
+                                  symbol: item.symbol,
+                                  coinName,
+                                  quantity: item.quantity,
+                                  currentPrice: item.currentPrice,
+                                  currentValue: item.currentValue,
+                                })
+                              }
+                            >
+                              Sell All
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">--</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
                       No holdings yet. Buy some coins from the Market page to see them here.
                     </td>
                   </tr>
@@ -139,6 +197,53 @@ export default function PortfolioPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={!!sellTarget} onOpenChange={(open) => !open && setSellTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Sell All</DialogTitle>
+            <DialogDescription>
+              {sellTarget && (
+                <>
+                  You are about to sell all your <span className="font-semibold text-foreground">{sellTarget.coinName}/USDT</span> holdings.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {sellTarget && (
+            <div className="space-y-2 py-2">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-muted-foreground">Quantity</span>
+                <span className="font-mono font-medium text-foreground">{sellTarget.quantity.toFixed(6)} {sellTarget.coinName}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-muted-foreground">Market Price</span>
+                <span className="font-mono font-medium text-foreground">${sellTarget.currentPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2 text-sm border-t border-border pt-2">
+                <span className="text-muted-foreground">Estimated Value</span>
+                <span className="font-mono font-semibold text-foreground">${sellTarget.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+          )}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setSellTarget(null)} data-testid="button-cancel-sell">
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleSellAll}
+              disabled={createTrade.isPending}
+              data-testid="button-confirm-sell"
+            >
+              {createTrade.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : null}
+              Sell All
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </LayoutShell>
   );
 }
