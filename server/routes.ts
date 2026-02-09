@@ -5,7 +5,7 @@ import { setupAuth, hashPassword } from "./auth";
 import { z } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
 
-async function sendTelegramMessage(botToken: string, chatId: string, message: string): Promise<boolean> {
+async function sendTelegramMessage(botToken: string, chatId: string, message: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
     const res = await fetch(url, {
@@ -14,14 +14,15 @@ async function sendTelegramMessage(botToken: string, chatId: string, message: st
       body: JSON.stringify({ chat_id: chatId, text: message, parse_mode: "HTML" }),
     });
     if (!res.ok) {
-      const err = await res.text();
-      console.error("[Telegram] Failed to send:", err);
-      return false;
+      const errBody = await res.json().catch(() => null);
+      const description = errBody?.description || `HTTP ${res.status}`;
+      console.error("[Telegram] Failed to send:", description);
+      return { ok: false, error: description };
     }
-    return true;
-  } catch (err) {
+    return { ok: true };
+  } catch (err: any) {
     console.error("[Telegram] Error:", err);
-    return false;
+    return { ok: false, error: err.message || "Network error" };
   }
 }
 
@@ -529,11 +530,18 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.sendStatus(401);
     try {
       const schema = z.object({
-        telegramBotToken: z.string(),
-        telegramChatId: z.string(),
+        telegramBotToken: z.string().min(1),
+        telegramChatId: z.string().min(1),
       });
       const data = schema.parse(req.body);
-      await storage.updateUserTelegram(req.user!.id, data.telegramBotToken, data.telegramChatId);
+      const token = data.telegramBotToken.trim();
+      const chatId = data.telegramChatId.trim();
+      
+      if (!token.includes(":")) {
+        return res.status(400).json({ message: "Invalid bot token format. It should look like: 1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw" });
+      }
+
+      await storage.updateUserTelegram(req.user!.id, token, chatId);
       const updatedUser = await storage.getUser(req.user!.id);
       res.json(updatedUser);
     } catch (e) {
@@ -550,15 +558,22 @@ export async function registerRoutes(
     if (!user?.telegramBotToken || !user?.telegramChatId) {
       return res.status(400).json({ message: "Telegram settings not configured" });
     }
-    const success = await sendTelegramMessage(
-      user.telegramBotToken,
-      user.telegramChatId,
+    const botToken = user.telegramBotToken.trim();
+    const chatId = user.telegramChatId.trim();
+    
+    if (!botToken.includes(":")) {
+      return res.status(400).json({ message: "Invalid bot token format. It should look like: 1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw" });
+    }
+
+    const result = await sendTelegramMessage(
+      botToken,
+      chatId,
       `<b>Test Message</b>\n\nYour Telegram alerts are working! You'll receive price alert notifications here.\n\n- Self Treding`
     );
-    if (success) {
+    if (result.ok) {
       res.json({ success: true });
     } else {
-      res.status(400).json({ message: "Failed to send test message. Check your bot token and chat ID." });
+      res.status(400).json({ message: result.error || "Failed to send test message. Check your bot token and chat ID." });
     }
   });
 

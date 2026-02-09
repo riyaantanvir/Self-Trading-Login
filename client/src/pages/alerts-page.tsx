@@ -107,18 +107,24 @@ export default function AlertsPage() {
               Connect your Telegram bot to receive price alert notifications. Create a bot via @BotFather on Telegram, then enter your bot token and chat ID below.
             </p>
             <div className="space-y-2">
-              <Input
-                placeholder="Bot Token (from @BotFather)"
-                value={tgBotToken}
-                onChange={(e) => setTgBotToken(e.target.value)}
-                data-testid="input-telegram-bot-token"
-              />
-              <Input
-                placeholder="Chat ID (your Telegram user/group ID)"
-                value={tgChatId}
-                onChange={(e) => setTgChatId(e.target.value)}
-                data-testid="input-telegram-chat-id"
-              />
+              <div>
+                <Input
+                  placeholder="e.g. 1234567890:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw"
+                  value={tgBotToken}
+                  onChange={(e) => setTgBotToken(e.target.value)}
+                  data-testid="input-telegram-bot-token"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Bot Token from @BotFather (format: number:letters)</p>
+              </div>
+              <div>
+                <Input
+                  placeholder="e.g. 6788205627"
+                  value={tgChatId}
+                  onChange={(e) => setTgChatId(e.target.value)}
+                  data-testid="input-telegram-chat-id"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Your Chat ID (send /start to @userinfobot to get it)</p>
+              </div>
             </div>
             <div className="flex gap-2">
               <Button
