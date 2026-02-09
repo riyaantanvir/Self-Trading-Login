@@ -152,25 +152,30 @@ function computeBollingerBands(klines: KlineData[], period = 20, multiplier = 2)
 
 const CHART_OPTS_BASE = {
   layout: {
-    background: { color: "transparent" },
-    textColor: "hsl(220, 10%, 50%)",
-    fontSize: 11,
+    background: { color: "#131722" },
+    textColor: "#787B86",
+    fontSize: 12,
   },
   grid: {
-    vertLines: { color: "hsl(220, 10%, 14%)" },
-    horzLines: { color: "hsl(220, 10%, 14%)" },
+    vertLines: { color: "rgba(42, 46, 57, 0.7)" },
+    horzLines: { color: "rgba(42, 46, 57, 0.7)" },
   },
   crosshair: {
-    vertLine: { color: "hsl(220, 10%, 30%)", width: 1 as const, style: 2 as const, labelBackgroundColor: "hsl(220, 14%, 16%)" },
-    horzLine: { color: "hsl(220, 10%, 30%)", width: 1 as const, style: 2 as const, labelBackgroundColor: "hsl(220, 14%, 16%)" },
+    mode: 0 as const,
+    vertLine: { color: "rgba(120, 123, 134, 0.4)", width: 1 as const, style: 2 as const, labelBackgroundColor: "#2A2E39" },
+    horzLine: { color: "rgba(120, 123, 134, 0.4)", width: 1 as const, style: 2 as const, labelBackgroundColor: "#2A2E39" },
   },
   timeScale: {
-    borderColor: "hsl(220, 10%, 16%)",
+    borderColor: "#2A2E39",
     timeVisible: true,
     secondsVisible: false,
+    rightOffset: 5,
+    barSpacing: 8,
+    minBarSpacing: 3,
   },
   rightPriceScale: {
-    borderColor: "hsl(220, 10%, 16%)",
+    borderColor: "#2A2E39",
+    scaleMargins: { top: 0.1, bottom: 0.15 },
   },
 };
 
@@ -220,12 +225,12 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pend
     }
 
     const candleSeries = mainChart.addSeries(CandlestickSeries, {
-      upColor: "#0ecb81",
-      downColor: "#f6465d",
-      borderUpColor: "#0ecb81",
-      borderDownColor: "#f6465d",
-      wickUpColor: "#0ecb81",
-      wickDownColor: "#f6465d",
+      upColor: "#26a69a",
+      downColor: "#ef5350",
+      borderUpColor: "#26a69a",
+      borderDownColor: "#ef5350",
+      wickUpColor: "#26a69a",
+      wickDownColor: "#ef5350",
     });
     candleSeries.setData(klines.map(k => ({
       time: k.time as any, open: k.open, high: k.high, low: k.low, close: k.close,
