@@ -5,146 +5,129 @@ import { setupAuth, hashPassword } from "./auth";
 import { z } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
 
-const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
-
-const COIN_IDS = [
-  "bitcoin", "ethereum", "binancecoin", "ripple", "solana",
-  "cardano", "dogecoin", "polkadot", "tron", "chainlink",
-  "avalanche-2", "uniswap", "litecoin", "cosmos", "ethereum-classic",
-  "stellar", "near", "algorand", "filecoin", "polygon-ecosystem-token"
+const TRACKED_SYMBOLS = [
+  "btcusdt", "ethusdt", "bnbusdt", "xrpusdt", "solusdt",
+  "adausdt", "dogeusdt", "dotusdt", "trxusdt", "linkusdt",
+  "avaxusdt", "uniusdt", "ltcusdt", "atomusdt", "etcusdt",
+  "xlmusdt", "nearusdt", "algousdt", "filusdt", "polusdt",
 ];
 
-const COIN_SYMBOL_MAP: Record<string, string> = {
-  "bitcoin": "BTCUSDT",
-  "ethereum": "ETHUSDT",
-  "binancecoin": "BNBUSDT",
-  "ripple": "XRPUSDT",
-  "solana": "SOLUSDT",
-  "cardano": "ADAUSDT",
-  "dogecoin": "DOGEUSDT",
-  "polkadot": "DOTUSDT",
-  "tron": "TRXUSDT",
-  "chainlink": "LINKUSDT",
-  "avalanche-2": "AVAXUSDT",
-  "uniswap": "UNIUSDT",
-  "litecoin": "LTCUSDT",
-  "cosmos": "ATOMUSDT",
-  "ethereum-classic": "ETCUSDT",
-  "stellar": "XLMUSDT",
-  "near": "NEARUSDT",
-  "algorand": "ALGOUSDT",
-  "filecoin": "FILUSDT",
-  "polygon-ecosystem-token": "POLUSDT",
-};
-
-let tickerCache: any[] = [];
-let lastFetchTime = 0;
-const CACHE_TTL = 10000;
-
-async function fetchCoinGeckoTickers() {
-  const now = Date.now();
-  if (tickerCache.length > 0 && now - lastFetchTime < CACHE_TTL) {
-    return tickerCache;
-  }
-
-  try {
-    const ids = COIN_IDS.join(",");
-    const url = `${COINGECKO_BASE}/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&per_page=20&page=1&sparkline=false&price_change_percentage=24h`;
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.error("CoinGecko API error:", response.status);
-      return tickerCache;
-    }
-    const data = await response.json();
-
-    tickerCache = (data as any[]).map((coin: any) => {
-      const symbol = COIN_SYMBOL_MAP[coin.id] || `${coin.symbol.toUpperCase()}USDT`;
-      return {
-        symbol,
-        lastPrice: String(coin.current_price || 0),
-        priceChangePercent: String(coin.price_change_percentage_24h || 0),
-        highPrice: String(coin.high_24h || 0),
-        lowPrice: String(coin.low_24h || 0),
-        volume: String(coin.total_volume || 0),
-        quoteVolume: String(coin.total_volume || 0),
-      };
-    });
-    lastFetchTime = now;
-    return tickerCache;
-  } catch (err) {
-    console.error("CoinGecko fetch error:", err);
-    return tickerCache;
-  }
+interface TickerData {
+  symbol: string;
+  lastPrice: string;
+  priceChangePercent: string;
+  highPrice: string;
+  lowPrice: string;
+  volume: string;
+  quoteVolume: string;
 }
 
-function setupBinanceWSRelay(httpServer: Server) {
+const tickerMap = new Map<string, TickerData>();
+
+function setupBinanceLiveStream(httpServer: Server) {
   const wss = new WebSocketServer({ server: httpServer, path: "/ws/market" });
-  const BINANCE_WS_URL = "wss://testnet.binance.vision/stream?streams=!ticker@arr";
+  const clients = new Set<WebSocket>();
   let binanceWs: WebSocket | null = null;
-  let clients = new Set<WebSocket>();
   let reconnectTimer: NodeJS.Timeout | null = null;
+  let broadcastInterval: NodeJS.Timeout | null = null;
   let binanceConnected = false;
 
   function connectBinance() {
     if (binanceWs) {
       try { binanceWs.close(); } catch {}
+      binanceWs = null;
     }
 
+    const streams = TRACKED_SYMBOLS.map(s => `${s}@miniTicker`).join("/");
+    const url = `wss://data-stream.binance.vision/stream?streams=${streams}`;
+
     try {
-      binanceWs = new WebSocket(BINANCE_WS_URL);
+      binanceWs = new WebSocket(url);
 
       binanceWs.on("open", () => {
-        console.log("[Binance WS] Connected to testnet stream");
+        console.log("[Binance WS] Connected to data-stream.binance.vision");
         binanceConnected = true;
+        broadcast({ type: "status", connected: true });
       });
 
-      binanceWs.on("message", (data) => {
-        const msg = data.toString();
-        clients.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(msg);
-          }
-        });
+      binanceWs.on("message", (rawData) => {
+        try {
+          const msg = JSON.parse(rawData.toString());
+          const d = msg.data;
+          if (!d || !d.s) return;
+
+          const symbol = d.s;
+          const openPrice = parseFloat(d.o);
+          const closePrice = parseFloat(d.c);
+          const changePercent = openPrice > 0 ? ((closePrice - openPrice) / openPrice) * 100 : 0;
+
+          tickerMap.set(symbol, {
+            symbol,
+            lastPrice: d.c,
+            priceChangePercent: changePercent.toFixed(2),
+            highPrice: d.h,
+            lowPrice: d.l,
+            volume: d.v,
+            quoteVolume: d.q,
+          });
+        } catch {}
       });
 
       binanceWs.on("error", (err) => {
-        console.error("[Binance WS] Error:", err.message);
+        console.error("[Binance WS] Error:", (err as any).message);
         binanceConnected = false;
       });
 
       binanceWs.on("close", () => {
-        console.log("[Binance WS] Disconnected, will retry in 10s");
+        console.log("[Binance WS] Disconnected, reconnecting in 3s...");
         binanceConnected = false;
+        binanceWs = null;
+        broadcast({ type: "status", connected: false });
         if (!reconnectTimer) {
           reconnectTimer = setTimeout(() => {
             reconnectTimer = null;
-            if (clients.size > 0) {
-              connectBinance();
-            }
-          }, 10000);
+            connectBinance();
+          }, 3000);
         }
       });
     } catch (err) {
-      console.error("[Binance WS] Connection failed:", err);
+      console.error("[Binance WS] Failed:", err);
       binanceConnected = false;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connectBinance();
+      }, 5000);
     }
   }
 
+  function broadcast(data: any) {
+    const msg = JSON.stringify(data);
+    clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(msg);
+      }
+    });
+  }
+
+  broadcastInterval = setInterval(() => {
+    if (tickerMap.size === 0) return;
+    const tickers = Array.from(tickerMap.values());
+    broadcast({ type: "tickers", data: tickers });
+  }, 1000);
+
+  connectBinance();
+
   wss.on("connection", (ws) => {
     clients.add(ws);
-    ws.send(JSON.stringify({ type: "status", binanceConnected }));
 
-    if (!binanceConnected && clients.size === 1) {
-      connectBinance();
+    ws.send(JSON.stringify({ type: "status", connected: binanceConnected }));
+
+    if (tickerMap.size > 0) {
+      ws.send(JSON.stringify({ type: "tickers", data: Array.from(tickerMap.values()) }));
     }
 
     ws.on("close", () => {
       clients.delete(ws);
-      if (clients.size === 0 && binanceWs) {
-        try { binanceWs.close(); } catch {}
-        binanceWs = null;
-        binanceConnected = false;
-      }
     });
   });
 
@@ -169,12 +152,15 @@ export async function registerRoutes(
     console.log("Admin user seeded");
   }
 
-  setupBinanceWSRelay(httpServer);
+  setupBinanceLiveStream(httpServer);
 
   app.get("/api/market/tickers", async (_req, res) => {
     try {
-      const tickers = await fetchCoinGeckoTickers();
-      res.json(tickers);
+      if (tickerMap.size > 0) {
+        res.json(Array.from(tickerMap.values()));
+        return;
+      }
+      res.json([]);
     } catch (err) {
       console.error("Market data error:", err);
       res.status(502).json({ message: "Failed to fetch market data" });

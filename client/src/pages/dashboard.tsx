@@ -20,7 +20,7 @@ interface Ticker {
 
 export default function Dashboard() {
   const { data: tickers, isLoading } = useTickers();
-  const { connected, source } = useBinanceWebSocket();
+  const { connected, priceFlashes } = useBinanceWebSocket();
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<"symbol" | "lastPrice" | "priceChangePercent" | "quoteVolume">("quoteVolume");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -75,7 +75,7 @@ export default function Dashboard() {
     return num.toFixed(2);
   }
 
-  if (isLoading) {
+  if (isLoading && !tickers) {
     return (
       <LayoutShell>
         <div className="flex items-center justify-center h-[60vh]">
@@ -92,7 +92,7 @@ export default function Dashboard() {
           <div>
             <h1 className="text-2xl font-bold text-foreground" data-testid="text-page-title">Markets</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Live prices from Binance Testnet
+              Real-time prices from Binance
             </p>
           </div>
           <div className="relative w-full sm:w-72">
@@ -143,10 +143,16 @@ export default function Dashboard() {
                   const change = parseFloat(ticker.priceChangePercent);
                   const isPositive = change >= 0;
                   const coinName = ticker.symbol.replace("USDT", "");
+                  const flash = priceFlashes.get(ticker.symbol);
+                  const flashClass = flash === "up"
+                    ? "bg-[#0ecb81]/15"
+                    : flash === "down"
+                    ? "bg-[#f6465d]/15"
+                    : "";
                   return (
                     <tr
                       key={ticker.symbol}
-                      className="border-b border-border/50 hover-elevate cursor-pointer"
+                      className={`border-b border-border/50 hover-elevate cursor-pointer transition-colors duration-300 ${flashClass}`}
                       data-testid={`row-ticker-${ticker.symbol}`}
                       onClick={() => openTrade(ticker)}
                     >
@@ -156,8 +162,12 @@ export default function Dashboard() {
                           <span className="text-xs text-muted-foreground">/USDT</span>
                         </div>
                       </td>
-                      <td className="p-3 text-right font-mono text-foreground" data-testid={`text-price-${ticker.symbol}`}>
-                        ${formatPrice(ticker.lastPrice)}
+                      <td className="p-3 text-right" data-testid={`text-price-${ticker.symbol}`}>
+                        <span className={`font-mono transition-colors duration-300 ${
+                          flash === "up" ? "text-[#0ecb81]" : flash === "down" ? "text-[#f6465d]" : "text-foreground"
+                        }`}>
+                          ${formatPrice(ticker.lastPrice)}
+                        </span>
                       </td>
                       <td className="p-3 text-right">
                         <span className={`font-mono font-medium ${isPositive ? "text-[#0ecb81]" : "text-[#f6465d]"}`} data-testid={`text-change-${ticker.symbol}`}>
@@ -206,12 +216,12 @@ export default function Dashboard() {
           {connected ? (
             <Badge variant="outline" className="gap-1 text-[#0ecb81] border-[#0ecb81]/30 no-default-hover-elevate no-default-active-elevate" data-testid="badge-ws-status">
               <Wifi className="w-3 h-3" />
-              Live via {source === "direct" ? "Binance WebSocket" : "Server Relay"}
+              Live - Real-time Binance Data
             </Badge>
           ) : (
             <Badge variant="outline" className="gap-1 text-muted-foreground no-default-hover-elevate no-default-active-elevate" data-testid="badge-ws-status">
               <WifiOff className="w-3 h-3" />
-              REST API (updates every 5s)
+              Connecting...
             </Badge>
           )}
         </div>
