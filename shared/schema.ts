@@ -7,7 +7,7 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   isAdmin: boolean("is_admin").default(false).notNull(),
-  balance: doublePrecision("balance").default(10000).notNull(),
+  balance: doublePrecision("balance").default(100000).notNull(),
 });
 
 export const trades = pgTable("trades", {
