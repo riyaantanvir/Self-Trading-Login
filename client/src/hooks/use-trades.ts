@@ -1,37 +1,57 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@shared/routes";
-import { insertTradeSchema, type InsertTrade } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
-// GET /api/trades
+export function useTickers() {
+  return useQuery({
+    queryKey: ["/api/market/tickers"],
+    queryFn: async () => {
+      const res = await fetch("/api/market/tickers", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch tickers");
+      return await res.json();
+    },
+    refetchInterval: 5000,
+  });
+}
+
 export function useTrades() {
   return useQuery({
-    queryKey: [api.trades.list.path],
+    queryKey: ["/api/trades"],
     queryFn: async () => {
-      const res = await fetch(api.trades.list.path, { credentials: "include" });
+      const res = await fetch("/api/trades", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch trades");
-      return api.trades.list.responses[200].parse(await res.json());
+      return await res.json();
     },
   });
 }
 
-// POST /api/trades
+export function usePortfolio() {
+  return useQuery({
+    queryKey: ["/api/portfolio"],
+    queryFn: async () => {
+      const res = await fetch("/api/portfolio", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch portfolio");
+      return await res.json();
+    },
+  });
+}
+
 export function useCreateTrade() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async (data: InsertTrade) => {
-      const validated = api.trades.create.input.parse(data);
-      const res = await apiRequest("POST", api.trades.create.path, validated);
-      return api.trades.create.responses[201].parse(await res.json());
+    mutationFn: async (data: { symbol: string; type: string; quantity: number; price: number }) => {
+      const res = await apiRequest("POST", "/api/trades", data);
+      return await res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.trades.list.path] });
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portfolio"] });
+      queryClient.setQueryData(["/api/user"], data.user);
       toast({
         title: "Trade Executed",
-        description: "Your trade has been placed successfully.",
+        description: `${data.trade.type.toUpperCase()} ${data.trade.quantity} ${data.trade.symbol} at $${Number(data.trade.price).toLocaleString()}`,
       });
     },
     onError: (error: Error) => {

@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
+import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { LogOut, LayoutDashboard, UserCircle, LineChart } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { BarChart3, Wallet, History, LogOut, TrendingUp } from "lucide-react";
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   const { user, logoutMutation } = useAuth();
@@ -9,72 +9,78 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
 
   if (!user) return <>{children}</>;
 
-  return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-background to-background text-foreground flex">
-      {/* Sidebar Navigation */}
-      <aside className="w-64 border-r border-white/5 bg-card/30 backdrop-blur-xl hidden md:flex flex-col">
-        <div className="p-6">
-          <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-primary to-emerald-200">
-            Self Treding
-          </h1>
-        </div>
+  const navItems = [
+    { label: "Market", icon: BarChart3, href: "/" },
+    { label: "Portfolio", icon: Wallet, href: "/portfolio" },
+    { label: "History", icon: History, href: "/history" },
+  ];
 
-        <nav className="flex-1 px-4 space-y-2">
+  return (
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      <header className="h-14 border-b border-border flex items-center justify-between px-4 gap-4 flex-wrap bg-card/50 sticky top-0 z-50">
+        <div className="flex items-center gap-6">
           <Link href="/">
-            <div className={`
-              flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all duration-200
-              ${location === "/" ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-white/5 hover:text-foreground"}
-            `}>
-              <LayoutDashboard size={20} />
-              <span className="font-medium">Dashboard</span>
+            <div className="flex items-center gap-2 cursor-pointer" data-testid="link-home">
+              <TrendingUp className="w-6 h-6 text-[#0ecb81]" />
+              <span className="text-lg font-bold text-foreground">Self Treding</span>
             </div>
           </Link>
-          
-          <div className="px-4 py-2 mt-6">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-              Account
-            </p>
-            <div className="flex items-center gap-3 px-2 py-2 text-sm text-foreground/80">
-              <UserCircle size={16} />
-              <span>{user.username}</span>
-              {user.isAdmin && (
-                <span className="ml-auto text-[10px] bg-accent/20 text-accent px-2 py-0.5 rounded-full font-bold border border-accent/20">
-                  ADMIN
-                </span>
-              )}
+          <nav className="hidden sm:flex items-center gap-1">
+            {navItems.map((item) => (
+              <Link key={item.href} href={item.href}>
+                <Button
+                  variant={location === item.href ? "secondary" : "ghost"}
+                  size="sm"
+                  data-testid={`link-${item.label.toLowerCase()}`}
+                  className="gap-2"
+                >
+                  <item.icon className="w-4 h-4" />
+                  {item.label}
+                </Button>
+              </Link>
+            ))}
+          </nav>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <div className="text-xs text-muted-foreground">Balance</div>
+            <div className="text-sm font-mono font-semibold text-[#0ecb81]" data-testid="text-balance">
+              ${Number(user.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
-        </nav>
-
-        <div className="p-4 border-t border-white/5">
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-            onClick={() => logoutMutation.mutate()}
-            disabled={logoutMutation.isPending}
-          >
-            <LogOut size={18} />
-            Sign Out
-          </Button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
-        {/* Mobile Header */}
-        <header className="h-16 md:hidden border-b border-white/5 flex items-center justify-between px-4 bg-card/50 backdrop-blur-md">
-          <span className="font-bold text-lg text-primary">Self Treding</span>
-          <Button size="sm" variant="ghost" onClick={() => logoutMutation.mutate()}>
-            <LogOut size={18} />
-          </Button>
-        </header>
-
-        {/* Scrollable Area */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">
-          <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {children}
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground hidden md:inline" data-testid="text-username">{user.username}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => logoutMutation.mutate()}
+              data-testid="button-logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </Button>
           </div>
         </div>
+      </header>
+
+      <nav className="sm:hidden flex items-center gap-1 p-2 border-b border-border bg-card/30">
+        {navItems.map((item) => (
+          <Link key={item.href} href={item.href}>
+            <Button
+              variant={location === item.href ? "secondary" : "ghost"}
+              size="sm"
+              className="gap-2 flex-1"
+              data-testid={`link-mobile-${item.label.toLowerCase()}`}
+            >
+              <item.icon className="w-4 h-4" />
+              {item.label}
+            </Button>
+          </Link>
+        ))}
+      </nav>
+
+      <main className="flex-1 overflow-y-auto">
+        {children}
       </main>
     </div>
   );
