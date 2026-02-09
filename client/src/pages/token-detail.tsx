@@ -190,8 +190,14 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pend
   const rsiChartRef = useRef<IChartApi | null>(null);
   const macdChartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<any>(null);
+  const volumeSeriesRef = useRef<any>(null);
+  const bollingerSeriesRef = useRef<any[]>([]);
+  const rsiSeriesRef = useRef<any>(null);
+  const macdSeriesRefs = useRef<{ macdLine: any; signalLine: any; histSeries: any }>({ macdLine: null, signalLine: null, histSeries: null });
   const orderLinesRef = useRef<any[]>([]);
   const [chartReady, setChartReady] = useState(0);
+  const chartStructureKeyRef = useRef("");
+  const isFirstRenderRef = useRef(true);
 
   const { data: klines, isLoading } = useQuery<KlineData[]>({
     queryKey: ["/api/market/klines", symbol, interval],
@@ -203,26 +209,54 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pend
     refetchInterval: 30000,
   });
 
+  const structureKey = `${symbol}_${interval}_${showBollinger}_${showRSI}_${showMACD}`;
+
   useEffect(() => {
     if (!mainRef.current || !klines || klines.length === 0) return;
+
+    const needsFullRebuild = chartStructureKeyRef.current !== structureKey || !mainChartRef.current;
+
+    if (!needsFullRebuild && candleSeriesRef.current) {
+      candleSeriesRef.current.setData(klines.map((k: KlineData) => ({
+        time: k.time as any, open: k.open, high: k.high, low: k.low, close: k.close,
+      })));
+      if (volumeSeriesRef.current) {
+        volumeSeriesRef.current.setData(klines.map((k: KlineData) => ({
+          time: k.time as any, value: k.volume,
+          color: k.close >= k.open ? "rgba(38, 166, 154, 0.25)" : "rgba(239, 83, 80, 0.25)",
+        })));
+      }
+      if (showBollinger && bollingerSeriesRef.current.length === 3) {
+        const bands = computeBollingerBands(klines);
+        bollingerSeriesRef.current[0].setData(bands.map((b: any) => ({ time: b.time as any, value: b.upper })));
+        bollingerSeriesRef.current[1].setData(bands.map((b: any) => ({ time: b.time as any, value: b.middle })));
+        bollingerSeriesRef.current[2].setData(bands.map((b: any) => ({ time: b.time as any, value: b.lower })));
+      }
+      if (showRSI && rsiSeriesRef.current) {
+        const rsiData = computeRSI(klines);
+        rsiSeriesRef.current.setData(rsiData.map((d: any) => ({ time: d.time as any, value: d.value })));
+      }
+      if (showMACD && macdSeriesRefs.current.macdLine) {
+        const macdData = computeMACD(klines);
+        macdSeriesRefs.current.macdLine.setData(macdData.map((d: any) => ({ time: d.time as any, value: d.macd })));
+        macdSeriesRefs.current.signalLine.setData(macdData.map((d: any) => ({ time: d.time as any, value: d.signal })));
+        macdSeriesRefs.current.histSeries.setData(macdData.map((d: any) => ({
+          time: d.time as any, value: d.histogram,
+          color: d.histogram >= 0 ? "rgba(14, 203, 129, 0.5)" : "rgba(246, 70, 93, 0.5)",
+        })));
+      }
+      return;
+    }
 
     if (mainChartRef.current) { mainChartRef.current.remove(); mainChartRef.current = null; }
     if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
     if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
+    bollingerSeriesRef.current = [];
+    rsiSeriesRef.current = null;
+    macdSeriesRefs.current = { macdLine: null, signalLine: null, histSeries: null };
 
     const mainChart = createChart(mainRef.current, { ...CHART_OPTS_BASE, autoSize: true });
     mainChartRef.current = mainChart;
-
-    // Restore logical range if exists
-    const savedRange = localStorage.getItem(`chart_range_${symbol}`);
-    if (savedRange) {
-      try {
-        const range = JSON.parse(savedRange);
-        mainChart.timeScale().setVisibleLogicalRange(range);
-      } catch (e) {
-        console.error("Failed to restore chart range", e);
-      }
-    }
 
     const candleSeries = mainChart.addSeries(CandlestickSeries, {
       upColor: "#26a69a",
@@ -251,28 +285,36 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pend
         color: "rgba(239, 83, 80, 0.6)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       });
       lowerSeries.setData(bands.map(b => ({ time: b.time as any, value: b.lower })));
+      bollingerSeriesRef.current = [upperSeries, middleSeries, lowerSeries];
     }
 
     const volumeSeries = mainChart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" }, priceScaleId: "volume",
     });
-    mainChart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+    mainChart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
     volumeSeries.setData(klines.map(k => ({
       time: k.time as any, value: k.volume,
-      color: k.close >= k.open ? "rgba(14, 203, 129, 0.3)" : "rgba(246, 70, 93, 0.3)",
+      color: k.close >= k.open ? "rgba(38, 166, 154, 0.25)" : "rgba(239, 83, 80, 0.25)",
     })));
+    volumeSeriesRef.current = volumeSeries;
 
-    // Only fit content if no saved range
-    if (!savedRange) {
+    const savedRange = localStorage.getItem(`chart_range_${symbol}_${interval}`);
+    if (savedRange && !isFirstRenderRef.current) {
+      try {
+        const range = JSON.parse(savedRange);
+        mainChart.timeScale().setVisibleLogicalRange(range);
+      } catch {}
+    } else {
       mainChart.timeScale().fitContent();
     }
+    isFirstRenderRef.current = false;
+
     mainChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
       if (range) {
-        localStorage.setItem(`chart_range_${symbol}`, JSON.stringify(range));
+        localStorage.setItem(`chart_range_${symbol}_${interval}`, JSON.stringify(range));
       }
     });
 
-    mainChartRef.current = mainChart;
     setChartReady(prev => prev + 1);
 
     const chartsToSync: IChartApi[] = [mainChart];
@@ -281,7 +323,7 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pend
       const rsiChart = createChart(rsiRef.current, {
         ...CHART_OPTS_BASE,
         autoSize: true,
-        rightPriceScale: { borderColor: "hsl(220, 10%, 16%)", scaleMargins: { top: 0.1, bottom: 0.1 } },
+        rightPriceScale: { borderColor: "#2A2E39", scaleMargins: { top: 0.1, bottom: 0.1 } },
       });
 
       const rsiData = computeRSI(klines);
@@ -289,6 +331,7 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pend
         color: "#b39ddb", lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false,
       });
       rsiLine.setData(rsiData.map(d => ({ time: d.time as any, value: d.value })));
+      rsiSeriesRef.current = rsiLine;
 
       const ob70 = rsiChart.addSeries(LineSeries, {
         color: "rgba(239, 83, 80, 0.3)", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
@@ -310,7 +353,7 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pend
       const macdChart = createChart(macdRef.current, {
         ...CHART_OPTS_BASE,
         autoSize: true,
-        rightPriceScale: { borderColor: "hsl(220, 10%, 16%)", scaleMargins: { top: 0.1, bottom: 0.1 } },
+        rightPriceScale: { borderColor: "#2A2E39", scaleMargins: { top: 0.1, bottom: 0.1 } },
       });
 
       const macdData = computeMACD(klines);
@@ -333,6 +376,8 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pend
         time: d.time as any, value: d.histogram,
         color: d.histogram >= 0 ? "rgba(14, 203, 129, 0.5)" : "rgba(246, 70, 93, 0.5)",
       })));
+
+      macdSeriesRefs.current = { macdLine, signalLine, histSeries };
 
       macdChart.timeScale().fitContent();
       macdChartRef.current = macdChart;
@@ -361,14 +406,20 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pend
       mainChart.timeScale().applyOptions({ visible: false });
     }
 
+    chartStructureKeyRef.current = structureKey;
+
     return () => {
       mainChart.remove(); mainChartRef.current = null;
       candleSeriesRef.current = null;
+      volumeSeriesRef.current = null;
+      bollingerSeriesRef.current = [];
+      rsiSeriesRef.current = null;
+      macdSeriesRefs.current = { macdLine: null, signalLine: null, histSeries: null };
       orderLinesRef.current = [];
       if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
       if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
     };
-  }, [klines, showBollinger, showRSI, showMACD]);
+  }, [klines, showBollinger, showRSI, showMACD, structureKey]);
 
   useEffect(() => {
     const series = candleSeriesRef.current;
