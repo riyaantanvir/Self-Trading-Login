@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
-import { usePortfolio, useTickers } from "@/hooks/use-trades";
+import { usePortfolio, useTickers, useTodayPnl } from "@/hooks/use-trades";
 import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
 import { useAuth } from "@/hooks/use-auth";
 import { LayoutShell } from "@/components/layout-shell";
@@ -85,6 +85,7 @@ export default function AssetsPage() {
   const { user } = useAuth();
   const { data: holdings, isLoading: loadingPortfolio } = usePortfolio();
   const { data: tickers, isLoading: loadingTickers } = useTickers();
+  const { data: todayPnlData } = useTodayPnl();
   const { priceFlashes } = useBinanceWebSocket();
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [search, setSearch] = useState("");
@@ -108,9 +109,10 @@ export default function AssetsPage() {
         const ticker = tickerMap[h.symbol];
         const currentPrice = ticker ? parseFloat(ticker.lastPrice) : 0;
         const currentValue = h.quantity * currentPrice;
-        const costBasis = h.quantity * h.avgBuyPrice;
-        const todayPnl = currentValue - costBasis;
-        const todayPnlPercent = costBasis > 0 ? (todayPnl / costBasis) * 100 : 0;
+        const symPnl = todayPnlData?.perSymbol?.[h.symbol] ?? 0;
+        const holdingValue = h.quantity * currentPrice;
+        const symStartValue = holdingValue - symPnl;
+        const symPnlPercent = symStartValue > 0 ? (symPnl / symStartValue) * 100 : 0;
         const coinName = h.symbol.replace("USDT", "");
         return {
           ...h,
@@ -119,13 +121,13 @@ export default function AssetsPage() {
           colorClass: COIN_COLORS[coinName] || "bg-muted",
           currentPrice,
           currentValue,
-          todayPnl,
-          todayPnlPercent,
+          todayPnl: symPnl,
+          todayPnlPercent: symPnlPercent,
           avgBuyPrice: h.avgBuyPrice,
         };
       })
       .sort((a, b) => b.currentValue - a.currentValue);
-  }, [holdings, tickerMap]);
+  }, [holdings, tickerMap, todayPnlData]);
 
   const filteredItems = useMemo(() => {
     if (!search) return portfolioItems;
@@ -145,13 +147,11 @@ export default function AssetsPage() {
   );
   const totalEstValue = cashBalance + totalHoldingsValue;
 
-  const totalTodayPnl = portfolioItems.reduce(
-    (sum, i) => sum + i.todayPnl,
-    0
-  );
+  const totalTodayPnl = todayPnlData?.totalPnl ?? 0;
+  const startOfDayValue = todayPnlData?.startOfDayValue ?? totalEstValue;
   const totalTodayPnlPercent =
-    totalEstValue - totalTodayPnl > 0
-      ? (totalTodayPnl / (totalEstValue - totalTodayPnl)) * 100
+    startOfDayValue > 0
+      ? (totalTodayPnl / startOfDayValue) * 100
       : 0;
 
   if (loadingPortfolio || loadingTickers) {

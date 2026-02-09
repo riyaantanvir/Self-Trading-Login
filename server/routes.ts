@@ -35,6 +35,7 @@ const TRACKED_SYMBOLS = [
 interface TickerData {
   symbol: string;
   lastPrice: string;
+  openPrice: string;
   priceChangePercent: string;
   highPrice: string;
   lowPrice: string;
@@ -84,6 +85,7 @@ function setupBinanceLiveStream(httpServer: Server) {
           tickerMap.set(symbol, {
             symbol,
             lastPrice: d.c,
+            openPrice: d.o,
             priceChangePercent: changePercent.toFixed(2),
             highPrice: d.h,
             lowPrice: d.l,
@@ -336,6 +338,83 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const items = await storage.getPortfolio(req.user!.id);
     res.json(items.filter(i => i.quantity > 0));
+  });
+
+  app.get("/api/portfolio/today-pnl", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    try {
+      const freshUser = await storage.getUser(req.user!.id);
+      if (!freshUser) return res.sendStatus(401);
+
+      const now = new Date();
+      const todayStart = new Date(now);
+      todayStart.setHours(6, 0, 0, 0);
+      if (now.getHours() < 6) {
+        todayStart.setDate(todayStart.getDate() - 1);
+      }
+
+      const todayTrades = await storage.getTradesSince(freshUser.id, todayStart);
+      const currentHoldings = await storage.getPortfolio(freshUser.id);
+
+      const currentCash = freshUser.balance;
+      const holdingsMap: Record<string, number> = {};
+      for (const h of currentHoldings) {
+        if (h.quantity > 0) holdingsMap[h.symbol] = h.quantity;
+      }
+
+      let startOfDayCash = currentCash;
+      const startOfDayHoldings: Record<string, number> = { ...holdingsMap };
+
+      for (const trade of todayTrades) {
+        if (trade.type === "buy") {
+          startOfDayCash += trade.total;
+          startOfDayHoldings[trade.symbol] = (startOfDayHoldings[trade.symbol] || 0) - trade.quantity;
+          if (startOfDayHoldings[trade.symbol] !== undefined && Math.abs(startOfDayHoldings[trade.symbol]) < 1e-10) {
+            delete startOfDayHoldings[trade.symbol];
+          }
+        } else {
+          startOfDayCash -= trade.total;
+          startOfDayHoldings[trade.symbol] = (startOfDayHoldings[trade.symbol] || 0) + trade.quantity;
+        }
+      }
+
+      let currentTotalValue = currentCash;
+      let startOfDayTotalValue = startOfDayCash;
+
+      const allSymbols = new Set([...Object.keys(holdingsMap), ...Object.keys(startOfDayHoldings)]);
+      const perSymbol: Record<string, number> = {};
+
+      for (const sym of allSymbols) {
+        const ticker = tickerMap.get(sym);
+        const currentPrice = ticker ? parseFloat(ticker.lastPrice) : 0;
+        const openPrice = ticker ? parseFloat(ticker.openPrice) : currentPrice;
+        const currentQty = holdingsMap[sym] || 0;
+        const startQty = startOfDayHoldings[sym] || 0;
+
+        currentTotalValue += currentQty * currentPrice;
+        startOfDayTotalValue += startQty * openPrice;
+
+        perSymbol[sym] = (currentQty * currentPrice) - (startQty * openPrice);
+        const cashDiff = todayTrades
+          .filter(t => t.symbol === sym)
+          .reduce((sum, t) => t.type === "sell" ? sum + t.total : sum - t.total, 0);
+        perSymbol[sym] += cashDiff;
+      }
+
+      const totalPnl = currentTotalValue - startOfDayTotalValue;
+
+      res.json({
+        totalPnl,
+        perSymbol,
+        startOfDayValue: startOfDayTotalValue,
+        currentValue: currentTotalValue,
+        periodStart: todayStart.toISOString(),
+      });
+    } catch (e) {
+      console.error("Today PNL error:", e);
+      res.status(500).json({ message: "Failed to calculate PNL" });
+    }
   });
 
   app.get("/api/watchlist", async (req, res) => {

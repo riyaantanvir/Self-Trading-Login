@@ -48,6 +48,7 @@ export function useCreateTrade() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/trades"] });
       queryClient.invalidateQueries({ queryKey: ["/api/portfolio"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portfolio/today-pnl"] });
       queryClient.setQueryData(["/api/user"], data.user);
       toast({
         title: "Trade Executed",
@@ -181,5 +182,17 @@ export function useTestTelegram() {
     onError: (error: Error) => {
       toast({ title: "Test failed", description: error.message, variant: "destructive" });
     },
+  });
+}
+
+export function useTodayPnl() {
+  return useQuery({
+    queryKey: ["/api/portfolio/today-pnl"],
+    queryFn: async () => {
+      const res = await fetch("/api/portfolio/today-pnl", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch today PNL");
+      return await res.json() as { totalPnl: number; perSymbol: Record<string, number>; startOfDayValue: number; currentValue: number; periodStart: string };
+    },
+    refetchInterval: 5000,
   });
 }

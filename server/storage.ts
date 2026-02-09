@@ -1,6 +1,6 @@
 import { users, trades, portfolio, watchlist, priceAlerts, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert } from "@shared/schema";
 import { db } from "./db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, lt } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -9,6 +9,7 @@ export interface IStorage {
   updateUserBalance(id: number, balance: number): Promise<void>;
 
   getTrades(userId: number): Promise<Trade[]>;
+  getTradesSince(userId: number, since: Date): Promise<Trade[]>;
   createTrade(trade: InsertTrade & { userId: number; total: number }): Promise<Trade>;
 
   getPortfolio(userId: number): Promise<Portfolio[]>;
@@ -50,6 +51,12 @@ export class DatabaseStorage implements IStorage {
 
   async getTrades(userId: number): Promise<Trade[]> {
     return await db.select().from(trades).where(eq(trades.userId, userId));
+  }
+
+  async getTradesSince(userId: number, since: Date): Promise<Trade[]> {
+    return await db.select().from(trades).where(
+      and(eq(trades.userId, userId), gte(trades.timestamp, since))
+    );
   }
 
   async createTrade(trade: InsertTrade & { userId: number; total: number }): Promise<Trade> {

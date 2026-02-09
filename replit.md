@@ -39,19 +39,24 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `GET /api/trades` - User trades
 - `POST /api/trades` - Execute trade (buy/sell, min 5 USDT)
 - `GET /api/portfolio` - User portfolio holdings
+- `GET /api/portfolio/today-pnl` - Server-calculated Today's PNL (6AM-6AM window, returns totalPnl, perSymbol, startOfDayValue)
 - `GET /api/watchlist` - User's watchlisted coins
 - `POST /api/watchlist` - Add coin to watchlist (body: { symbol })
 - `DELETE /api/watchlist/:symbol` - Remove coin from watchlist
 - `GET /api/alerts` - User's price alerts
-- `POST /api/alerts` - Create price alert (body: { symbol, targetPrice, direction })
+- `POST /api/alerts` - Create price alert (body: { symbol, targetPrice, direction, notifyTelegram })
 - `DELETE /api/alerts/:id` - Delete price alert
 - `GET /api/alerts/triggered` - User's triggered alerts
+- `POST /api/user/telegram` - Save Telegram bot token and chat ID
+- `POST /api/user/telegram/test` - Send test Telegram message
 
 ## Admin Credentials
 - Username: Admin
 - Password: Admin
 
 ## Recent Changes
+- Feb 2026: Fixed Today's PNL to use server-side calculation based on 6AM-6AM window (reverse-computes start-of-day state from current state + today's trades, uses Binance open prices for start-of-day valuation)
+- Feb 2026: Added Telegram integration for price alerts (user-configured bot token + chat ID, test message, toggle per alert)
 - Feb 2026: Added price alerts feature with DB persistence, server-side checking every 3s, WebSocket notifications, alerts page, and bell icon on token detail for quick alert creation
 - Feb 2026: Added Admin Panel page (admin-only, placeholder sections for user management, balance top-up, etc.)
 - Feb 2026: Added Assets page with Binance-style overview (total value, today's PNL, holdings with live data)
