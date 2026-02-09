@@ -12,6 +12,7 @@ type AuthContextType = {
   error: Error | null;
   loginMutation: ReturnType<typeof useLogin>;
   logoutMutation: ReturnType<typeof useLogout>;
+  registerMutation: ReturnType<typeof useRegister>;
 };
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -33,6 +34,30 @@ function useLogin() {
     onError: (error: Error) => {
       toast({
         title: "Login failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+}
+
+function useRegister() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (data: { username: string; email: string; password: string }) => {
+      const res = await apiRequest("POST", "/api/register", data);
+      return await res.json();
+    },
+    onSuccess: (user: User) => {
+      queryClient.setQueryData(["/api/user"], user);
+      toast({
+        title: "Account created!",
+        description: `Welcome, ${user.username}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Registration failed",
         description: error.message,
         variant: "destructive",
       });
@@ -75,6 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loginMutation = useLogin();
   const logoutMutation = useLogout();
+  const registerMutation = useRegister();
 
   return (
     <AuthContext.Provider
@@ -84,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         error,
         loginMutation,
         logoutMutation,
+        registerMutation,
       }}
     >
       {children}
