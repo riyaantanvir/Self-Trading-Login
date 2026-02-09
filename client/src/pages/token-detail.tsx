@@ -174,8 +174,9 @@ const CHART_OPTS_BASE = {
   },
 };
 
-function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD }: {
+function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pendingOrders }: {
   symbol: string; interval: string; showBollinger: boolean; showRSI: boolean; showMACD: boolean;
+  pendingOrders?: any[];
 }) {
   const mainRef = useRef<HTMLDivElement>(null);
   const rsiRef = useRef<HTMLDivElement>(null);
@@ -183,6 +184,9 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD }: {
   const mainChartRef = useRef<IChartApi | null>(null);
   const rsiChartRef = useRef<IChartApi | null>(null);
   const macdChartRef = useRef<IChartApi | null>(null);
+  const candleSeriesRef = useRef<any>(null);
+  const orderLinesRef = useRef<any[]>([]);
+  const [chartReady, setChartReady] = useState(0);
 
   const { data: klines, isLoading } = useQuery<KlineData[]>({
     queryKey: ["/api/market/klines", symbol, interval],
@@ -214,6 +218,7 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD }: {
     candleSeries.setData(klines.map(k => ({
       time: k.time as any, open: k.open, high: k.high, low: k.low, close: k.close,
     })));
+    candleSeriesRef.current = candleSeries;
 
     if (showBollinger) {
       const bands = computeBollingerBands(klines);
@@ -242,6 +247,7 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD }: {
 
     mainChart.timeScale().fitContent();
     mainChartRef.current = mainChart;
+    setChartReady(prev => prev + 1);
 
     const chartsToSync: IChartApi[] = [mainChart];
 
@@ -331,10 +337,73 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD }: {
 
     return () => {
       mainChart.remove(); mainChartRef.current = null;
+      candleSeriesRef.current = null;
+      orderLinesRef.current = [];
       if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
       if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
     };
   }, [klines, showBollinger, showRSI, showMACD]);
+
+  useEffect(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+
+    orderLinesRef.current.forEach(line => {
+      try { series.removePriceLine(line); } catch {}
+    });
+    orderLinesRef.current = [];
+
+    if (!pendingOrders || pendingOrders.length === 0) return;
+
+    const orderTypeLabels: Record<string, string> = {
+      market: "MKT",
+      limit: "LMT",
+      stop_limit: "SL",
+      stop_market: "SM",
+    };
+
+    for (const order of pendingOrders) {
+      const isBuy = order.type === "buy";
+      const color = isBuy ? "#0ecb81" : "#f6465d";
+      const label = `${orderTypeLabels[order.orderType] || order.orderType} ${order.type.toUpperCase()} ${Number(order.quantity).toFixed(4)}`;
+
+      if (order.limitPrice) {
+        const priceLine = series.createPriceLine({
+          price: Number(order.limitPrice),
+          color,
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: `${label} @ LMT`,
+        });
+        orderLinesRef.current.push(priceLine);
+      }
+
+      if (order.stopPrice) {
+        const stopLine = series.createPriceLine({
+          price: Number(order.stopPrice),
+          color: isBuy ? "rgba(14, 203, 129, 0.6)" : "rgba(246, 70, 93, 0.6)",
+          lineWidth: 1,
+          lineStyle: 3,
+          axisLabelVisible: true,
+          title: `${label} @ STP`,
+        });
+        orderLinesRef.current.push(stopLine);
+      }
+
+      if (!order.limitPrice && !order.stopPrice) {
+        const priceLine = series.createPriceLine({
+          price: Number(order.price),
+          color,
+          lineWidth: 1,
+          lineStyle: 2,
+          axisLabelVisible: true,
+          title: label,
+        });
+        orderLinesRef.current.push(priceLine);
+      }
+    }
+  }, [pendingOrders, chartReady]);
 
   if (isLoading) {
     return (
@@ -887,6 +956,11 @@ export default function TokenDetail() {
   const quoteVolume = ticker ? parseFloat(ticker.quoteVolume) : 0;
   const flash = priceFlashes.get(symbol);
 
+  const { data: pendingData } = usePendingOrders();
+  const cancelOrder = useCancelOrder();
+  const allPendingOrders = (pendingData as any[] || []);
+  const symbolPendingOrders = allPendingOrders.filter((o: any) => o.symbol === symbol);
+
   const [showBollinger, setShowBollinger] = useState(false);
   const [showRSI, setShowRSI] = useState(false);
   const [showMACD, setShowMACD] = useState(false);
@@ -1058,8 +1132,69 @@ export default function TokenDetail() {
               </div>
             </div>
             <div className="flex-1 min-h-0">
-              <ChartSection symbol={symbol} interval={interval} showBollinger={showBollinger} showRSI={showRSI} showMACD={showMACD} />
+              <ChartSection symbol={symbol} interval={interval} showBollinger={showBollinger} showRSI={showRSI} showMACD={showMACD} pendingOrders={symbolPendingOrders} />
             </div>
+
+            {allPendingOrders.length > 0 && (
+              <div className="border-t border-border overflow-y-auto shrink-0" style={{ maxHeight: "140px" }}>
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-border sticky top-0 bg-card z-10">
+                  <span className="text-xs font-medium text-foreground">Open Orders ({allPendingOrders.length})</span>
+                </div>
+                <div className="text-[10px] font-mono overflow-x-auto">
+                  <div className="grid grid-cols-[80px_60px_70px_1fr_80px_80px_40px] gap-1 px-3 py-1 text-muted-foreground border-b border-border sticky top-[29px] bg-card z-10 min-w-[520px]">
+                    <span>Date</span>
+                    <span>Pair</span>
+                    <span>Type</span>
+                    <span>Side/Price</span>
+                    <span className="text-right">Amount</span>
+                    <span className="text-right">Total</span>
+                    <span></span>
+                  </div>
+                  {allPendingOrders.map((order: any) => {
+                    const orderTypeLabel: Record<string, string> = { limit: "Limit", stop_limit: "Stop Limit", stop_market: "Stop Mkt" };
+                    const displayPrice = order.limitPrice || order.stopPrice || order.price;
+                    const total = Number(order.quantity) * Number(displayPrice);
+                    const date = order.timestamp ? new Date(order.timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+                    return (
+                      <div
+                        key={order.id}
+                        className="grid grid-cols-[80px_60px_70px_1fr_80px_80px_40px] gap-1 px-3 py-1.5 items-center hover-elevate min-w-[520px]"
+                        data-testid={`row-open-order-${order.id}`}
+                      >
+                        <span className="text-muted-foreground">{date}</span>
+                        <span className="text-foreground">{order.symbol.replace("USDT", "")}</span>
+                        <Badge variant="outline" className="text-[8px] px-1 py-0 w-fit">
+                          {orderTypeLabel[order.orderType] || order.orderType}
+                        </Badge>
+                        <div className="flex items-center gap-1">
+                          <span className={order.type === "buy" ? "text-[#0ecb81] font-medium" : "text-[#f6465d] font-medium"}>
+                            {order.type.toUpperCase()}
+                          </span>
+                          <span className="text-muted-foreground">@</span>
+                          <span className="text-foreground">${formatPrice(Number(displayPrice))}</span>
+                          {order.stopPrice && order.limitPrice && (
+                            <span className="text-muted-foreground ml-1">(stp: ${formatPrice(Number(order.stopPrice))})</span>
+                          )}
+                        </div>
+                        <span className="text-right text-foreground">{Number(order.quantity).toFixed(6)}</span>
+                        <span className="text-right text-foreground">${total.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                        <div className="flex justify-end">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => cancelOrder.mutate(order.id)}
+                            disabled={cancelOrder.isPending}
+                            data-testid={`button-cancel-open-order-${order.id}`}
+                          >
+                            <X className="w-3 h-3 text-[#f6465d]" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="hidden md:flex flex-col w-64 border-l border-border">
