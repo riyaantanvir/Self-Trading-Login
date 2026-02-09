@@ -8,7 +8,7 @@ import { LayoutShell } from "@/components/layout-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { createChart, CandlestickSeries, HistogramSeries, type IChartApi } from "lightweight-charts";
+import { createChart, CandlestickSeries, HistogramSeries, LineSeries, type IChartApi } from "lightweight-charts";
 import {
   ArrowLeft,
   Loader2,
@@ -61,7 +61,30 @@ function formatVolume(vol: number) {
   return vol.toFixed(2);
 }
 
-function PriceChart({ symbol, interval }: { symbol: string; interval: string }) {
+function computeBollingerBands(klines: KlineData[], period = 20, multiplier = 2) {
+  const result: { time: number; upper: number; middle: number; lower: number }[] = [];
+  for (let i = period - 1; i < klines.length; i++) {
+    let sum = 0;
+    for (let j = i - period + 1; j <= i; j++) {
+      sum += klines[j].close;
+    }
+    const sma = sum / period;
+    let sqSum = 0;
+    for (let j = i - period + 1; j <= i; j++) {
+      sqSum += (klines[j].close - sma) ** 2;
+    }
+    const stdDev = Math.sqrt(sqSum / period);
+    result.push({
+      time: klines[i].time,
+      upper: sma + multiplier * stdDev,
+      middle: sma,
+      lower: sma - multiplier * stdDev,
+    });
+  }
+  return result;
+}
+
+function PriceChart({ symbol, interval, showBollinger }: { symbol: string; interval: string; showBollinger: boolean }) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
@@ -125,6 +148,37 @@ function PriceChart({ symbol, interval }: { symbol: string; interval: string }) 
       close: k.close,
     })));
 
+    if (showBollinger) {
+      const bands = computeBollingerBands(klines);
+
+      const upperSeries = chart.addSeries(LineSeries, {
+        color: "rgba(38, 166, 154, 0.6)",
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      upperSeries.setData(bands.map(b => ({ time: b.time as any, value: b.upper })));
+
+      const middleSeries = chart.addSeries(LineSeries, {
+        color: "rgba(255, 183, 77, 0.7)",
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      middleSeries.setData(bands.map(b => ({ time: b.time as any, value: b.middle })));
+
+      const lowerSeries = chart.addSeries(LineSeries, {
+        color: "rgba(239, 83, 80, 0.6)",
+        lineWidth: 1,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      });
+      lowerSeries.setData(bands.map(b => ({ time: b.time as any, value: b.lower })));
+    }
+
     const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: "volume" },
       priceScaleId: "volume",
@@ -147,7 +201,7 @@ function PriceChart({ symbol, interval }: { symbol: string; interval: string }) 
       chart.remove();
       chartRef.current = null;
     };
-  }, [klines]);
+  }, [klines, showBollinger]);
 
   if (isLoading) {
     return (
@@ -550,6 +604,7 @@ export default function TokenDetail() {
   const quoteVolume = ticker ? parseFloat(ticker.quoteVolume) : 0;
   const flash = priceFlashes.get(symbol);
 
+  const [showBollinger, setShowBollinger] = useState(false);
   const [isBuySheetOpen, setIsBuySheetOpen] = useState(false);
   const [isSellSheetOpen, setIsSellSheetOpen] = useState(false);
   const [isAlertSheetOpen, setIsAlertSheetOpen] = useState(false);
@@ -668,9 +723,24 @@ export default function TokenDetail() {
                   {iv.label}
                 </Button>
               ))}
+              <div className="ml-2 border-l border-border pl-2 flex items-center gap-1.5">
+                <label
+                  className="flex items-center gap-1.5 cursor-pointer select-none"
+                  data-testid="label-bollinger-toggle"
+                >
+                  <input
+                    type="checkbox"
+                    checked={showBollinger}
+                    onChange={(e) => setShowBollinger(e.target.checked)}
+                    className="w-3 h-3 rounded accent-[#f0b90b] cursor-pointer"
+                    data-testid="checkbox-bollinger"
+                  />
+                  <span className="text-[10px] text-muted-foreground">BB</span>
+                </label>
+              </div>
             </div>
             <div className="flex-1 min-h-0">
-              <PriceChart symbol={symbol} interval={interval} />
+              <PriceChart symbol={symbol} interval={interval} showBollinger={showBollinger} />
             </div>
           </div>
 

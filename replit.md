@@ -56,7 +56,11 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Username: Admin
 - Password: Admin
 
+## Chart Indicators
+- Bollinger Bands (BB): Toggle checkbox on chart toolbar, computes 20-period SMA with 2 standard deviation bands (upper=green, middle=orange, lower=red), uses LineSeries from lightweight-charts
+
 ## Recent Changes
+- Feb 2026: Added Bollinger Bands indicator to trading charts with toggle checkbox on interval bar
 - Feb 2026: Added PNL analysis page (/pnl) with daily calendar view, net worth chart, cumulative PNL chart, profits bar chart, 7D/30D/90D period tabs; Today's PNL on assets page is now clickable to navigate there
 - Feb 2026: Fixed Today's PNL to use server-side calculation based on 6AM-6AM window (reverse-computes start-of-day state from current state + today's trades, uses Binance open prices for start-of-day valuation)
 - Feb 2026: Added Telegram integration for price alerts (user-configured bot token + chat ID, test message, toggle per alert)
