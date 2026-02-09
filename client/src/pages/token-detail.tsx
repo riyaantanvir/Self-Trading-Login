@@ -17,7 +17,15 @@ import {
   Wifi,
   WifiOff,
   BarChart3,
+  ChevronDown,
 } from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 interface KlineData {
   time: number;
@@ -219,8 +227,18 @@ function OrderBookSimulated({ price, symbol }: { price: number; symbol: string }
   );
 }
 
-function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: number }) {
-  const [type, setType] = useState<"buy" | "sell">("buy");
+function TradePanel({
+  symbol,
+  currentPrice,
+  defaultType = "buy",
+  onComplete,
+}: {
+  symbol: string;
+  currentPrice: number;
+  defaultType?: "buy" | "sell";
+  onComplete?: () => void;
+}) {
+  const [type, setType] = useState<"buy" | "sell">(defaultType);
   const [inputMode, setInputMode] = useState<"token" | "usdt">("usdt");
   const [amount, setAmount] = useState("");
   const [sliderValue, setSliderValue] = useState(0);
@@ -278,6 +296,7 @@ function TradePanel({ symbol, currentPrice }: { symbol: string; currentPrice: nu
         onSuccess: () => {
           setAmount("");
           setSliderValue(0);
+          onComplete?.();
         },
       }
     );
@@ -530,6 +549,9 @@ export default function TokenDetail() {
   const quoteVolume = ticker ? parseFloat(ticker.quoteVolume) : 0;
   const flash = priceFlashes.get(symbol);
 
+  const [isBuySheetOpen, setIsBuySheetOpen] = useState(false);
+  const [isSellSheetOpen, setIsSellSheetOpen] = useState(false);
+
   if (!ticker) {
     return (
       <LayoutShell>
@@ -646,30 +668,45 @@ export default function TokenDetail() {
           </div>
         </div>
 
-        <div className="md:hidden border-t border-border p-3 bg-card/50">
-          <div className="flex gap-2">
-            <Link href={`/trade/${symbol.toLowerCase()}`} className="flex-1">
+        {/* Mobile Action Bar */}
+        <div className="md:hidden flex gap-2 p-3 bg-background border-t border-border pb-safe">
+          <Sheet open={isBuySheetOpen} onOpenChange={setIsBuySheetOpen}>
+            <SheetTrigger asChild>
               <Button
-                variant="default"
-                className="w-full text-xs font-bold"
-                onClick={(e) => {
-                  e.preventDefault();
-                  const el = document.getElementById("mobile-trade-section");
-                  if (el) el.scrollIntoView({ behavior: "smooth" });
-                }}
+                className="flex-1 bg-[#0ecb81] hover:bg-[#0ecb81]/90 text-white font-bold"
                 data-testid="button-mobile-buy"
               >
                 Buy {coinName}
               </Button>
-            </Link>
-            <Button
-              variant="destructive"
-              className="flex-1 text-xs font-bold"
-              data-testid="button-mobile-sell"
-            >
-              Sell {coinName}
-            </Button>
-          </div>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="h-[80vh] px-0 pb-safe">
+              <SheetHeader className="px-4 pb-2 border-b border-border">
+                <SheetTitle>Buy {coinName}</SheetTitle>
+              </SheetHeader>
+              <div className="overflow-y-auto h-full pb-10">
+                <TradePanel symbol={symbol} currentPrice={currentPrice} defaultType="buy" onComplete={() => setIsBuySheetOpen(false)} />
+              </div>
+            </SheetContent>
+          </Sheet>
+
+          <Sheet open={isSellSheetOpen} onOpenChange={setIsSellSheetOpen}>
+            <SheetTrigger asChild>
+              <Button
+                className="flex-1 bg-[#f6465d] hover:bg-[#f6465d]/90 text-white font-bold"
+                data-testid="button-mobile-sell"
+              >
+                Sell {coinName}
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="h-[80vh] px-0 pb-safe">
+              <SheetHeader className="px-4 pb-2 border-b border-border">
+                <SheetTitle>Sell {coinName}</SheetTitle>
+              </SheetHeader>
+              <div className="overflow-y-auto h-full pb-10">
+                <TradePanel symbol={symbol} currentPrice={currentPrice} defaultType="sell" onComplete={() => setIsSellSheetOpen(false)} />
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
 
         <div className="flex border-t border-border overflow-x-auto bg-card/30">
