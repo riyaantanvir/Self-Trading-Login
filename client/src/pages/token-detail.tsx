@@ -206,6 +206,18 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pend
     if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
 
     const mainChart = createChart(mainRef.current, { ...CHART_OPTS_BASE, autoSize: true });
+    mainChartRef.current = mainChart;
+
+    // Restore logical range if exists
+    const savedRange = localStorage.getItem(`chart_range_${symbol}`);
+    if (savedRange) {
+      try {
+        const range = JSON.parse(savedRange);
+        mainChart.timeScale().setVisibleLogicalRange(range);
+      } catch (e) {
+        console.error("Failed to restore chart range", e);
+      }
+    }
 
     const candleSeries = mainChart.addSeries(CandlestickSeries, {
       upColor: "#0ecb81",
@@ -245,7 +257,16 @@ function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD, pend
       color: k.close >= k.open ? "rgba(14, 203, 129, 0.3)" : "rgba(246, 70, 93, 0.3)",
     })));
 
-    mainChart.timeScale().fitContent();
+    // Only fit content if no saved range
+    if (!savedRange) {
+      mainChart.timeScale().fitContent();
+    }
+    mainChart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (range) {
+        localStorage.setItem(`chart_range_${symbol}`, JSON.stringify(range));
+      }
+    });
+
     mainChartRef.current = mainChart;
     setChartReady(prev => prev + 1);
 
