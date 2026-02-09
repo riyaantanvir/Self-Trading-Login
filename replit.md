@@ -23,8 +23,9 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `/auth` - Login page
 - `/` - Market overview (Binance-style coin table with live prices)
 - `/trade/:symbol` - Token detail page (candlestick chart, order book, trade panel)
-- `/assets` - Assets overview (Binance-style, total value, today's PNL, holdings list)
-- `/portfolio` - Holdings and P&L
+- `/assets` - Assets overview (Binance-style, total value, today's PNL clickable, holdings list)
+- `/pnl` - PNL analysis page (daily calendar, charts, 7D/30D/90D periods, cumulative PNL)
+- `/portfolio` - Holdings, P&L, and quick sell
 - `/history` - Trade history
 - `/alerts` - Price alerts management (create, view, delete alerts)
 - `/admin` - Admin panel (admin-only, placeholder for future settings)
@@ -40,6 +41,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `POST /api/trades` - Execute trade (buy/sell, min 5 USDT)
 - `GET /api/portfolio` - User portfolio holdings
 - `GET /api/portfolio/today-pnl` - Server-calculated Today's PNL (6AM-6AM window, returns totalPnl, perSymbol, startOfDayValue)
+- `GET /api/portfolio/pnl-history` - Daily realized PNL history (6AM-6AM window, returns dailyPnl array, cumulativePnl, weeklyPnl)
 - `GET /api/watchlist` - User's watchlisted coins
 - `POST /api/watchlist` - Add coin to watchlist (body: { symbol })
 - `DELETE /api/watchlist/:symbol` - Remove coin from watchlist
@@ -55,6 +57,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Password: Admin
 
 ## Recent Changes
+- Feb 2026: Added PNL analysis page (/pnl) with daily calendar view, net worth chart, cumulative PNL chart, profits bar chart, 7D/30D/90D period tabs; Today's PNL on assets page is now clickable to navigate there
 - Feb 2026: Fixed Today's PNL to use server-side calculation based on 6AM-6AM window (reverse-computes start-of-day state from current state + today's trades, uses Binance open prices for start-of-day valuation)
 - Feb 2026: Added Telegram integration for price alerts (user-configured bot token + chat ID, test message, toggle per alert)
 - Feb 2026: Added price alerts feature with DB persistence, server-side checking every 3s, WebSocket notifications, alerts page, and bell icon on token detail for quick alert creation

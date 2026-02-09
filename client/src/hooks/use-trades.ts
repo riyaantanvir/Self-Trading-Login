@@ -185,6 +185,30 @@ export function useTestTelegram() {
   });
 }
 
+export interface DailyPnlEntry {
+  date: string;
+  pnl: number;
+  cumulative: number;
+}
+
+export interface PnlHistoryData {
+  dailyPnl: DailyPnlEntry[];
+  cumulativePnl: number;
+  weeklyPnl: number;
+  startingBalance: number;
+}
+
+export function usePnlHistory() {
+  return useQuery({
+    queryKey: ["/api/portfolio/pnl-history"],
+    queryFn: async () => {
+      const res = await fetch("/api/portfolio/pnl-history", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch PNL history");
+      return await res.json() as PnlHistoryData;
+    },
+  });
+}
+
 export function useTodayPnl() {
   return useQuery({
     queryKey: ["/api/portfolio/today-pnl"],

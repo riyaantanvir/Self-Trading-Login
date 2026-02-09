@@ -243,10 +243,14 @@ export default function AssetsPage() {
           <div className="text-sm text-muted-foreground mb-1" data-testid="text-total-usd">
             {balanceVisible ? `~ $${formatAmount(totalEstValue)}` : "~ $****"}
           </div>
-          <div className="flex items-center gap-1 text-sm">
-            <span className="text-muted-foreground">Today's PNL</span>
+          <div
+            className="flex items-center gap-1 text-sm cursor-pointer group"
+            onClick={() => navigate("/pnl")}
+            data-testid="link-today-pnl"
+          >
+            <span className="text-muted-foreground group-hover:underline">Today's PNL</span>
             <span
-              className={`font-mono font-medium ${totalTodayPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}
+              className={`font-mono font-medium group-hover:underline ${totalTodayPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}
               data-testid="text-today-pnl"
             >
               {balanceVisible

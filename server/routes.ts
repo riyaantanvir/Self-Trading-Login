@@ -417,6 +417,94 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/portfolio/pnl-history", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+
+    try {
+      const freshUser = await storage.getUser(req.user!.id);
+      if (!freshUser) return res.sendStatus(401);
+
+      const allTrades = await storage.getTrades(freshUser.id);
+      if (allTrades.length === 0) {
+        return res.json({ dailyPnl: [], cumulativePnl: 0, weeklyPnl: 0, startingBalance: 100000 });
+      }
+
+      allTrades.sort((a, b) => {
+        const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return ta - tb;
+      });
+
+      const holdingsState: Record<string, { qty: number; avgCost: number }> = {};
+
+      const dailyMap: Record<string, number> = {};
+
+      function getTradingDayKey(ts: Date): string {
+        const shifted = new Date(ts);
+        if (shifted.getHours() < 6) {
+          shifted.setDate(shifted.getDate() - 1);
+        }
+        return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, "0")}-${String(shifted.getDate()).padStart(2, "0")}`;
+      }
+
+      for (const trade of allTrades) {
+        const ts = trade.timestamp ? new Date(trade.timestamp) : new Date();
+        const dayKey = getTradingDayKey(ts);
+
+        if (!dailyMap[dayKey]) dailyMap[dayKey] = 0;
+
+        if (trade.type === "buy") {
+          const existing = holdingsState[trade.symbol];
+          if (existing) {
+            const newQty = existing.qty + trade.quantity;
+            const newAvg = ((existing.avgCost * existing.qty) + trade.total) / newQty;
+            holdingsState[trade.symbol] = { qty: newQty, avgCost: newAvg };
+          } else {
+            holdingsState[trade.symbol] = { qty: trade.quantity, avgCost: trade.price };
+          }
+        } else {
+          const existing = holdingsState[trade.symbol];
+          if (existing) {
+            const realizedPnl = (trade.price - existing.avgCost) * trade.quantity;
+            dailyMap[dayKey] += realizedPnl;
+            const newQty = existing.qty - trade.quantity;
+            if (newQty <= 0.00000001) {
+              delete holdingsState[trade.symbol];
+            } else {
+              holdingsState[trade.symbol] = { qty: newQty, avgCost: existing.avgCost };
+            }
+          }
+        }
+      }
+
+      const sortedDays = Object.keys(dailyMap).sort();
+      let cumulative = 0;
+      const dailyPnl = sortedDays.map((day) => {
+        cumulative += dailyMap[day];
+        return { date: day, pnl: dailyMap[day], cumulative };
+      });
+
+      const now = new Date();
+      const sevenDaysAgo = new Date(now);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const sevenDayKey = `${sevenDaysAgo.getFullYear()}-${String(sevenDaysAgo.getMonth() + 1).padStart(2, "0")}-${String(sevenDaysAgo.getDate()).padStart(2, "0")}`;
+
+      const weeklyPnl = dailyPnl
+        .filter((d) => d.date >= sevenDayKey)
+        .reduce((sum, d) => sum + d.pnl, 0);
+
+      res.json({
+        dailyPnl,
+        cumulativePnl: cumulative,
+        weeklyPnl,
+        startingBalance: 100000,
+      });
+    } catch (e) {
+      console.error("PNL history error:", e);
+      res.status(500).json({ message: "Failed to calculate PNL history" });
+    }
+  });
+
   app.get("/api/watchlist", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const items = await storage.getWatchlist(req.user!.id);
