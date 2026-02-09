@@ -153,7 +153,6 @@ export default function AuthPage() {
                         <FormLabel>Email</FormLabel>
                         <FormControl>
                           <Input
-                            type="email"
                             placeholder="Enter email"
                             autoComplete="new-email"
                             {...field}
