@@ -58,8 +58,12 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 
 ## Chart Indicators
 - Bollinger Bands (BB): Toggle checkbox on chart toolbar, computes 20-period SMA with 2 standard deviation bands (upper=green, middle=orange, lower=red), uses LineSeries from lightweight-charts
+- RSI (14): Toggle checkbox, renders in separate sub-panel below main chart with overbought (70) and oversold (30) dashed lines, purple line
+- MACD (12,26,9): Toggle checkbox, renders in separate sub-panel with MACD line (blue), signal line (orange), histogram bars (green/red)
+- All indicator sub-charts are time-synced with the main candlestick chart
 
 ## Recent Changes
+- Feb 2026: Added RSI and MACD indicators with separate sub-panels and time-synced scrolling
 - Feb 2026: Added Bollinger Bands indicator to trading charts with toggle checkbox on interval bar
 - Feb 2026: Added PNL analysis page (/pnl) with daily calendar view, net worth chart, cumulative PNL chart, profits bar chart, 7D/30D/90D period tabs; Today's PNL on assets page is now clickable to navigate there
 - Feb 2026: Fixed Today's PNL to use server-side calculation based on 6AM-6AM window (reverse-computes start-of-day state from current state + today's trades, uses Binance open prices for start-of-day valuation)

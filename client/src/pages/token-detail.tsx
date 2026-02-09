@@ -61,6 +61,69 @@ function formatVolume(vol: number) {
   return vol.toFixed(2);
 }
 
+function computeRSI(klines: KlineData[], period = 14) {
+  const result: { time: number; value: number }[] = [];
+  if (klines.length < period + 1) return result;
+  let gainSum = 0;
+  let lossSum = 0;
+  for (let i = 1; i <= period; i++) {
+    const diff = klines[i].close - klines[i - 1].close;
+    if (diff >= 0) gainSum += diff;
+    else lossSum += Math.abs(diff);
+  }
+  let avgGain = gainSum / period;
+  let avgLoss = lossSum / period;
+  const rsi = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  result.push({ time: klines[period].time, value: rsi });
+  for (let i = period + 1; i < klines.length; i++) {
+    const diff = klines[i].close - klines[i - 1].close;
+    const gain = diff >= 0 ? diff : 0;
+    const loss = diff < 0 ? Math.abs(diff) : 0;
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+    const val = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    result.push({ time: klines[i].time, value: val });
+  }
+  return result;
+}
+
+function computeMACD(klines: KlineData[], fast = 12, slow = 26, signal = 9) {
+  const ema = (data: number[], period: number) => {
+    const result: number[] = [];
+    let sum = 0;
+    for (let i = 0; i < period; i++) sum += data[i];
+    result[period - 1] = sum / period;
+    const mult = 2 / (period + 1);
+    for (let i = period; i < data.length; i++) {
+      result[i] = (data[i] - result[i - 1]) * mult + result[i - 1];
+    }
+    return result;
+  };
+  const closes = klines.map(k => k.close);
+  const emaFast = ema(closes, fast);
+  const emaSlow = ema(closes, slow);
+  const macdLine: number[] = [];
+  for (let i = slow - 1; i < closes.length; i++) {
+    macdLine[i] = (emaFast[i] || 0) - (emaSlow[i] || 0);
+  }
+  const macdValues = macdLine.filter((v) => v !== undefined);
+  const signalEma = ema(macdValues, signal);
+  const result: { time: number; macd: number; signal: number; histogram: number }[] = [];
+  const startIdx = slow - 1;
+  for (let i = 0; i < macdValues.length; i++) {
+    const globalIdx = startIdx + i;
+    if (i >= signal - 1 && signalEma[i] !== undefined) {
+      result.push({
+        time: klines[globalIdx].time,
+        macd: macdValues[i],
+        signal: signalEma[i],
+        histogram: macdValues[i] - signalEma[i],
+      });
+    }
+  }
+  return result;
+}
+
 function computeBollingerBands(klines: KlineData[], period = 20, multiplier = 2) {
   const result: { time: number; upper: number; middle: number; lower: number }[] = [];
   for (let i = period - 1; i < klines.length; i++) {
@@ -84,9 +147,39 @@ function computeBollingerBands(klines: KlineData[], period = 20, multiplier = 2)
   return result;
 }
 
-function PriceChart({ symbol, interval, showBollinger }: { symbol: string; interval: string; showBollinger: boolean }) {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
+const CHART_OPTS_BASE = {
+  layout: {
+    background: { color: "transparent" },
+    textColor: "hsl(220, 10%, 50%)",
+    fontSize: 11,
+  },
+  grid: {
+    vertLines: { color: "hsl(220, 10%, 14%)" },
+    horzLines: { color: "hsl(220, 10%, 14%)" },
+  },
+  crosshair: {
+    vertLine: { color: "hsl(220, 10%, 30%)", width: 1 as const, style: 2 as const, labelBackgroundColor: "hsl(220, 14%, 16%)" },
+    horzLine: { color: "hsl(220, 10%, 30%)", width: 1 as const, style: 2 as const, labelBackgroundColor: "hsl(220, 14%, 16%)" },
+  },
+  timeScale: {
+    borderColor: "hsl(220, 10%, 16%)",
+    timeVisible: true,
+    secondsVisible: false,
+  },
+  rightPriceScale: {
+    borderColor: "hsl(220, 10%, 16%)",
+  },
+};
+
+function ChartSection({ symbol, interval, showBollinger, showRSI, showMACD }: {
+  symbol: string; interval: string; showBollinger: boolean; showRSI: boolean; showMACD: boolean;
+}) {
+  const mainRef = useRef<HTMLDivElement>(null);
+  const rsiRef = useRef<HTMLDivElement>(null);
+  const macdRef = useRef<HTMLDivElement>(null);
+  const mainChartRef = useRef<IChartApi | null>(null);
+  const rsiChartRef = useRef<IChartApi | null>(null);
+  const macdChartRef = useRef<IChartApi | null>(null);
 
   const { data: klines, isLoading } = useQuery<KlineData[]>({
     queryKey: ["/api/market/klines", symbol, interval],
@@ -99,39 +192,15 @@ function PriceChart({ symbol, interval, showBollinger }: { symbol: string; inter
   });
 
   useEffect(() => {
-    if (!chartContainerRef.current || !klines || klines.length === 0) return;
+    if (!mainRef.current || !klines || klines.length === 0) return;
 
-    if (chartRef.current) {
-      chartRef.current.remove();
-      chartRef.current = null;
-    }
+    if (mainChartRef.current) { mainChartRef.current.remove(); mainChartRef.current = null; }
+    if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
+    if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
 
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { color: "transparent" },
-        textColor: "hsl(220, 10%, 50%)",
-        fontSize: 11,
-      },
-      grid: {
-        vertLines: { color: "hsl(220, 10%, 14%)" },
-        horzLines: { color: "hsl(220, 10%, 14%)" },
-      },
-      crosshair: {
-        vertLine: { color: "hsl(220, 10%, 30%)", width: 1, style: 2, labelBackgroundColor: "hsl(220, 14%, 16%)" },
-        horzLine: { color: "hsl(220, 10%, 30%)", width: 1, style: 2, labelBackgroundColor: "hsl(220, 14%, 16%)" },
-      },
-      timeScale: {
-        borderColor: "hsl(220, 10%, 16%)",
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      rightPriceScale: {
-        borderColor: "hsl(220, 10%, 16%)",
-      },
-      autoSize: true,
-    });
+    const mainChart = createChart(mainRef.current, { ...CHART_OPTS_BASE, autoSize: true });
 
-    const candleSeries = chart.addSeries(CandlestickSeries, {
+    const candleSeries = mainChart.addSeries(CandlestickSeries, {
       upColor: "#0ecb81",
       downColor: "#f6465d",
       borderUpColor: "#0ecb81",
@@ -139,69 +208,130 @@ function PriceChart({ symbol, interval, showBollinger }: { symbol: string; inter
       wickUpColor: "#0ecb81",
       wickDownColor: "#f6465d",
     });
-
     candleSeries.setData(klines.map(k => ({
-      time: k.time as any,
-      open: k.open,
-      high: k.high,
-      low: k.low,
-      close: k.close,
+      time: k.time as any, open: k.open, high: k.high, low: k.low, close: k.close,
     })));
 
     if (showBollinger) {
       const bands = computeBollingerBands(klines);
-
-      const upperSeries = chart.addSeries(LineSeries, {
-        color: "rgba(38, 166, 154, 0.6)",
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
+      const upperSeries = mainChart.addSeries(LineSeries, {
+        color: "rgba(38, 166, 154, 0.6)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       });
       upperSeries.setData(bands.map(b => ({ time: b.time as any, value: b.upper })));
-
-      const middleSeries = chart.addSeries(LineSeries, {
-        color: "rgba(255, 183, 77, 0.7)",
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
+      const middleSeries = mainChart.addSeries(LineSeries, {
+        color: "rgba(255, 183, 77, 0.7)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       });
       middleSeries.setData(bands.map(b => ({ time: b.time as any, value: b.middle })));
-
-      const lowerSeries = chart.addSeries(LineSeries, {
-        color: "rgba(239, 83, 80, 0.6)",
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
+      const lowerSeries = mainChart.addSeries(LineSeries, {
+        color: "rgba(239, 83, 80, 0.6)", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
       });
       lowerSeries.setData(bands.map(b => ({ time: b.time as any, value: b.lower })));
     }
 
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      priceFormat: { type: "volume" },
-      priceScaleId: "volume",
+    const volumeSeries = mainChart.addSeries(HistogramSeries, {
+      priceFormat: { type: "volume" }, priceScaleId: "volume",
     });
-
-    chart.priceScale("volume").applyOptions({
-      scaleMargins: { top: 0.8, bottom: 0 },
-    });
-
+    mainChart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
     volumeSeries.setData(klines.map(k => ({
-      time: k.time as any,
-      value: k.volume,
+      time: k.time as any, value: k.volume,
       color: k.close >= k.open ? "rgba(14, 203, 129, 0.3)" : "rgba(246, 70, 93, 0.3)",
     })));
 
-    chart.timeScale().fitContent();
-    chartRef.current = chart;
+    mainChart.timeScale().fitContent();
+    mainChartRef.current = mainChart;
+
+    const chartsToSync: IChartApi[] = [mainChart];
+
+    if (showRSI && rsiRef.current) {
+      const rsiChart = createChart(rsiRef.current, {
+        ...CHART_OPTS_BASE,
+        autoSize: true,
+        rightPriceScale: { borderColor: "hsl(220, 10%, 16%)", scaleMargins: { top: 0.1, bottom: 0.1 } },
+      });
+
+      const rsiData = computeRSI(klines);
+      const rsiLine = rsiChart.addSeries(LineSeries, {
+        color: "#b39ddb", lineWidth: 1, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false,
+      });
+      rsiLine.setData(rsiData.map(d => ({ time: d.time as any, value: d.value })));
+
+      const ob70 = rsiChart.addSeries(LineSeries, {
+        color: "rgba(239, 83, 80, 0.3)", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      });
+      ob70.setData(rsiData.map(d => ({ time: d.time as any, value: 70 })));
+
+      const os30 = rsiChart.addSeries(LineSeries, {
+        color: "rgba(38, 166, 154, 0.3)", lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      });
+      os30.setData(rsiData.map(d => ({ time: d.time as any, value: 30 })));
+
+      rsiChart.timeScale().fitContent();
+      rsiChart.timeScale().applyOptions({ visible: !showMACD });
+      rsiChartRef.current = rsiChart;
+      chartsToSync.push(rsiChart);
+    }
+
+    if (showMACD && macdRef.current) {
+      const macdChart = createChart(macdRef.current, {
+        ...CHART_OPTS_BASE,
+        autoSize: true,
+        rightPriceScale: { borderColor: "hsl(220, 10%, 16%)", scaleMargins: { top: 0.1, bottom: 0.1 } },
+      });
+
+      const macdData = computeMACD(klines);
+
+      const macdLine = macdChart.addSeries(LineSeries, {
+        color: "#42a5f5", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      });
+      macdLine.setData(macdData.map(d => ({ time: d.time as any, value: d.macd })));
+
+      const signalLine = macdChart.addSeries(LineSeries, {
+        color: "#ff7043", lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+      });
+      signalLine.setData(macdData.map(d => ({ time: d.time as any, value: d.signal })));
+
+      const histSeries = macdChart.addSeries(HistogramSeries, {
+        priceFormat: { type: "price" }, priceScaleId: "macd_hist",
+      });
+      macdChart.priceScale("macd_hist").applyOptions({ scaleMargins: { top: 0.7, bottom: 0 } });
+      histSeries.setData(macdData.map(d => ({
+        time: d.time as any, value: d.histogram,
+        color: d.histogram >= 0 ? "rgba(14, 203, 129, 0.5)" : "rgba(246, 70, 93, 0.5)",
+      })));
+
+      macdChart.timeScale().fitContent();
+      macdChartRef.current = macdChart;
+      chartsToSync.push(macdChart);
+    }
+
+    if (chartsToSync.length > 1) {
+      let isSyncing = false;
+      chartsToSync.forEach((chart, idx) => {
+        chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+          if (isSyncing || !range) return;
+          isSyncing = true;
+          chartsToSync.forEach((other, otherIdx) => {
+            if (idx !== otherIdx) {
+              other.timeScale().setVisibleLogicalRange(range);
+            }
+          });
+          isSyncing = false;
+        });
+      });
+    }
+
+    if (!showRSI && !showMACD) {
+      mainChart.timeScale().applyOptions({ visible: true });
+    } else {
+      mainChart.timeScale().applyOptions({ visible: false });
+    }
 
     return () => {
-      chart.remove();
-      chartRef.current = null;
+      mainChart.remove(); mainChartRef.current = null;
+      if (rsiChartRef.current) { rsiChartRef.current.remove(); rsiChartRef.current = null; }
+      if (macdChartRef.current) { macdChartRef.current.remove(); macdChartRef.current = null; }
     };
-  }, [klines, showBollinger]);
+  }, [klines, showBollinger, showRSI, showMACD]);
 
   if (isLoading) {
     return (
@@ -211,7 +341,29 @@ function PriceChart({ symbol, interval, showBollinger }: { symbol: string; inter
     );
   }
 
-  return <div ref={chartContainerRef} className="w-full h-full" data-testid="chart-container" />;
+  const subPanelCount = (showRSI ? 1 : 0) + (showMACD ? 1 : 0);
+  const mainHeight = subPanelCount === 0 ? "100%" : subPanelCount === 1 ? "70%" : "55%";
+  const subHeight = subPanelCount === 2 ? "22.5%" : "30%";
+
+  return (
+    <div className="w-full h-full flex flex-col" data-testid="chart-container">
+      <div style={{ height: mainHeight }} className="w-full min-h-0">
+        <div ref={mainRef} className="w-full h-full" />
+      </div>
+      {showRSI && (
+        <div style={{ height: subHeight }} className="w-full min-h-0 border-t border-border relative">
+          <span className="absolute top-1 left-2 text-[9px] text-muted-foreground z-10 font-mono">RSI(14)</span>
+          <div ref={rsiRef} className="w-full h-full" />
+        </div>
+      )}
+      {showMACD && (
+        <div style={{ height: subHeight }} className="w-full min-h-0 border-t border-border relative">
+          <span className="absolute top-1 left-2 text-[9px] text-muted-foreground z-10 font-mono">MACD(12,26,9)</span>
+          <div ref={macdRef} className="w-full h-full" />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function OrderBookSimulated({ price, symbol }: { price: number; symbol: string }) {
@@ -605,6 +757,8 @@ export default function TokenDetail() {
   const flash = priceFlashes.get(symbol);
 
   const [showBollinger, setShowBollinger] = useState(false);
+  const [showRSI, setShowRSI] = useState(false);
+  const [showMACD, setShowMACD] = useState(false);
   const [isBuySheetOpen, setIsBuySheetOpen] = useState(false);
   const [isSellSheetOpen, setIsSellSheetOpen] = useState(false);
   const [isAlertSheetOpen, setIsAlertSheetOpen] = useState(false);
@@ -723,7 +877,7 @@ export default function TokenDetail() {
                   {iv.label}
                 </Button>
               ))}
-              <div className="ml-2 border-l border-border pl-2 flex items-center gap-1.5">
+              <div className="ml-2 border-l border-border pl-2 flex items-center gap-3">
                 <label
                   className="flex items-center gap-1.5 cursor-pointer select-none"
                   data-testid="label-bollinger-toggle"
@@ -737,10 +891,36 @@ export default function TokenDetail() {
                   />
                   <span className="text-[10px] text-muted-foreground">BB</span>
                 </label>
+                <label
+                  className="flex items-center gap-1.5 cursor-pointer select-none"
+                  data-testid="label-rsi-toggle"
+                >
+                  <input
+                    type="checkbox"
+                    checked={showRSI}
+                    onChange={(e) => setShowRSI(e.target.checked)}
+                    className="w-3 h-3 rounded accent-[#b39ddb] cursor-pointer"
+                    data-testid="checkbox-rsi"
+                  />
+                  <span className="text-[10px] text-muted-foreground">RSI</span>
+                </label>
+                <label
+                  className="flex items-center gap-1.5 cursor-pointer select-none"
+                  data-testid="label-macd-toggle"
+                >
+                  <input
+                    type="checkbox"
+                    checked={showMACD}
+                    onChange={(e) => setShowMACD(e.target.checked)}
+                    className="w-3 h-3 rounded accent-[#42a5f5] cursor-pointer"
+                    data-testid="checkbox-macd"
+                  />
+                  <span className="text-[10px] text-muted-foreground">MACD</span>
+                </label>
               </div>
             </div>
             <div className="flex-1 min-h-0">
-              <PriceChart symbol={symbol} interval={interval} showBollinger={showBollinger} />
+              <ChartSection symbol={symbol} interval={interval} showBollinger={showBollinger} showRSI={showRSI} showMACD={showMACD} />
             </div>
           </div>
 
