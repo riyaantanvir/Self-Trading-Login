@@ -107,15 +107,10 @@ export default function AssetsPage() {
       .map((h) => {
         const ticker = tickerMap[h.symbol];
         const currentPrice = ticker ? parseFloat(ticker.lastPrice) : 0;
-        const priceChange = ticker ? parseFloat(ticker.priceChangePercent) : 0;
         const currentValue = h.quantity * currentPrice;
         const costBasis = h.quantity * h.avgBuyPrice;
-        const totalPnl = currentValue - costBasis;
-        const totalPnlPercent = costBasis > 0 ? (totalPnl / costBasis) * 100 : 0;
-        const previousPrice = currentPrice / (1 + priceChange / 100);
-        const previousValue = h.quantity * previousPrice;
-        const todayPnl = currentValue - previousValue;
-        const todayPnlPercent = previousValue > 0 ? (todayPnl / previousValue) * 100 : 0;
+        const todayPnl = currentValue - costBasis;
+        const todayPnlPercent = costBasis > 0 ? (todayPnl / costBasis) * 100 : 0;
         const coinName = h.symbol.replace("USDT", "");
         return {
           ...h,
@@ -126,8 +121,6 @@ export default function AssetsPage() {
           currentValue,
           todayPnl,
           todayPnlPercent,
-          totalPnl,
-          totalPnlPercent,
           avgBuyPrice: h.avgBuyPrice,
         };
       })
