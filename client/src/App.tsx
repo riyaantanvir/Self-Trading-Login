@@ -11,6 +11,7 @@ import Dashboard from "@/pages/dashboard";
 import PortfolioPage from "@/pages/portfolio-page";
 import HistoryPage from "@/pages/history-page";
 import TokenDetail from "@/pages/token-detail";
+import AssetsPage from "@/pages/assets-page";
 
 function Router() {
   return (
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/auth" component={AuthPage} />
       <ProtectedRoute path="/" component={Dashboard} />
       <ProtectedRoute path="/trade/:symbol" component={TokenDetail} />
+      <ProtectedRoute path="/assets" component={AssetsPage} />
       <ProtectedRoute path="/portfolio" component={PortfolioPage} />
       <ProtectedRoute path="/history" component={HistoryPage} />
       <Route component={NotFound} />

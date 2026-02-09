@@ -1,0 +1,436 @@
+import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
+import { usePortfolio, useTickers } from "@/hooks/use-trades";
+import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
+import { useAuth } from "@/hooks/use-auth";
+import { LayoutShell } from "@/components/layout-shell";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Loader2,
+  Search,
+  Eye,
+  EyeOff,
+} from "lucide-react";
+
+const COIN_NAMES: Record<string, string> = {
+  BTC: "Bitcoin",
+  ETH: "Ethereum",
+  BNB: "BNB",
+  XRP: "XRP",
+  SOL: "Solana",
+  ADA: "Cardano",
+  DOGE: "Dogecoin",
+  DOT: "Polkadot",
+  TRX: "TRON",
+  LINK: "Chainlink",
+  AVAX: "Avalanche",
+  UNI: "Uniswap",
+  LTC: "Litecoin",
+  ATOM: "Cosmos",
+  ETC: "Ethereum Classic",
+  XLM: "Stellar",
+  NEAR: "NEAR Protocol",
+  ALGO: "Algorand",
+  FIL: "Filecoin",
+  POL: "Polygon",
+  USDT: "Tether",
+  USDC: "USD Coin",
+};
+
+const COIN_COLORS: Record<string, string> = {
+  BTC: "bg-[#F7931A]",
+  ETH: "bg-[#627EEA]",
+  BNB: "bg-[#F3BA2F]",
+  XRP: "bg-[#23292F]",
+  SOL: "bg-[#9945FF]",
+  ADA: "bg-[#0033AD]",
+  DOGE: "bg-[#C2A633]",
+  DOT: "bg-[#E6007A]",
+  TRX: "bg-[#EF0027]",
+  LINK: "bg-[#2A5ADA]",
+  AVAX: "bg-[#E84142]",
+  UNI: "bg-[#FF007A]",
+  LTC: "bg-[#345D9D]",
+  ATOM: "bg-[#2E3148]",
+  ETC: "bg-[#328332]",
+  XLM: "bg-[#14B6E7]",
+  NEAR: "bg-[#00C08B]",
+  ALGO: "bg-[#000000]",
+  FIL: "bg-[#0090FF]",
+  POL: "bg-[#8247E5]",
+  USDT: "bg-[#26A17B]",
+  USDC: "bg-[#2775CA]",
+};
+
+interface Ticker {
+  symbol: string;
+  lastPrice: string;
+  priceChangePercent: string;
+  highPrice: string;
+  lowPrice: string;
+  volume: string;
+  quoteVolume: string;
+}
+
+interface PortfolioItem {
+  id: number;
+  userId: number;
+  symbol: string;
+  quantity: number;
+  avgBuyPrice: number;
+}
+
+export default function AssetsPage() {
+  const { user } = useAuth();
+  const { data: holdings, isLoading: loadingPortfolio } = usePortfolio();
+  const { data: tickers, isLoading: loadingTickers } = useTickers();
+  const { priceFlashes } = useBinanceWebSocket();
+  const [balanceVisible, setBalanceVisible] = useState(true);
+  const [search, setSearch] = useState("");
+  const [, navigate] = useLocation();
+
+  const tickerMap = useMemo(() => {
+    const map: Record<string, Ticker> = {};
+    if (tickers) {
+      (tickers as Ticker[]).forEach((t) => {
+        map[t.symbol] = t;
+      });
+    }
+    return map;
+  }, [tickers]);
+
+  const portfolioItems = useMemo(() => {
+    if (!holdings) return [];
+    return (holdings as PortfolioItem[])
+      .filter((h) => h.quantity > 0)
+      .map((h) => {
+        const ticker = tickerMap[h.symbol];
+        const currentPrice = ticker ? parseFloat(ticker.lastPrice) : 0;
+        const priceChange = ticker ? parseFloat(ticker.priceChangePercent) : 0;
+        const currentValue = h.quantity * currentPrice;
+        const costBasis = h.quantity * h.avgBuyPrice;
+        const totalPnl = currentValue - costBasis;
+        const totalPnlPercent = costBasis > 0 ? (totalPnl / costBasis) * 100 : 0;
+        const previousPrice = currentPrice / (1 + priceChange / 100);
+        const previousValue = h.quantity * previousPrice;
+        const todayPnl = currentValue - previousValue;
+        const todayPnlPercent = previousValue > 0 ? (todayPnl / previousValue) * 100 : 0;
+        const coinName = h.symbol.replace("USDT", "");
+        return {
+          ...h,
+          coinName,
+          fullName: COIN_NAMES[coinName] || coinName,
+          colorClass: COIN_COLORS[coinName] || "bg-muted",
+          currentPrice,
+          currentValue,
+          todayPnl,
+          todayPnlPercent,
+          totalPnl,
+          totalPnlPercent,
+          avgBuyPrice: h.avgBuyPrice,
+        };
+      })
+      .sort((a, b) => b.currentValue - a.currentValue);
+  }, [holdings, tickerMap]);
+
+  const filteredItems = useMemo(() => {
+    if (!search) return portfolioItems;
+    const q = search.toLowerCase();
+    return portfolioItems.filter(
+      (i) =>
+        i.coinName.toLowerCase().includes(q) ||
+        i.fullName.toLowerCase().includes(q)
+    );
+  }, [portfolioItems, search]);
+
+  const cashBalance = user?.balance || 0;
+
+  const totalHoldingsValue = portfolioItems.reduce(
+    (sum, i) => sum + i.currentValue,
+    0
+  );
+  const totalEstValue = cashBalance + totalHoldingsValue;
+
+  const totalTodayPnl = portfolioItems.reduce(
+    (sum, i) => sum + i.todayPnl,
+    0
+  );
+  const totalTodayPnlPercent =
+    totalEstValue - totalTodayPnl > 0
+      ? (totalTodayPnl / (totalEstValue - totalTodayPnl)) * 100
+      : 0;
+
+  if (loadingPortfolio || loadingTickers) {
+    return (
+      <LayoutShell>
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="w-10 h-10 animate-spin text-[#0ecb81]" />
+        </div>
+      </LayoutShell>
+    );
+  }
+
+  function formatAmount(val: number, decimals = 2) {
+    if (!balanceVisible) return "****";
+    return val.toLocaleString(undefined, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+  }
+
+  function formatQuantity(val: number) {
+    if (!balanceVisible) return "****";
+    if (val >= 1000) return val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (val >= 1) return val.toFixed(4);
+    return val.toFixed(8);
+  }
+
+  return (
+    <LayoutShell>
+      <div className="p-4 md:p-6 max-w-3xl mx-auto">
+        <div className="flex items-center gap-4 mb-6 border-b border-border pb-3 overflow-x-auto">
+          <button
+            className="text-base font-semibold text-foreground border-b-2 border-[#0ecb81] pb-2 whitespace-nowrap"
+            data-testid="tab-overview"
+          >
+            Overview
+          </button>
+          <button
+            className="text-base text-muted-foreground pb-2 whitespace-nowrap cursor-not-allowed opacity-50"
+            disabled
+            data-testid="tab-spot"
+          >
+            Spot
+          </button>
+          <button
+            className="text-base text-muted-foreground pb-2 whitespace-nowrap cursor-not-allowed opacity-50"
+            disabled
+            data-testid="tab-funding"
+          >
+            Funding
+          </button>
+          <button
+            className="text-base text-muted-foreground pb-2 whitespace-nowrap cursor-not-allowed opacity-50"
+            disabled
+            data-testid="tab-futures"
+          >
+            Futures
+          </button>
+          <button
+            className="text-base text-muted-foreground pb-2 whitespace-nowrap cursor-not-allowed opacity-50"
+            disabled
+            data-testid="tab-earn"
+          >
+            Earn
+          </button>
+        </div>
+
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-sm text-muted-foreground">Est. Total Value</span>
+            <button
+              onClick={() => setBalanceVisible(!balanceVisible)}
+              className="text-muted-foreground"
+              data-testid="button-toggle-balance"
+            >
+              {balanceVisible ? (
+                <Eye className="w-4 h-4" />
+              ) : (
+                <EyeOff className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+          <div className="flex items-baseline gap-2 mb-1">
+            <span className="text-3xl font-bold text-foreground font-mono" data-testid="text-total-value">
+              {formatAmount(totalEstValue)}
+            </span>
+            <span className="text-lg text-muted-foreground">USDT</span>
+          </div>
+          <div className="text-sm text-muted-foreground mb-1" data-testid="text-total-usd">
+            {balanceVisible ? `~ $${formatAmount(totalEstValue)}` : "~ $****"}
+          </div>
+          <div className="flex items-center gap-1 text-sm">
+            <span className="text-muted-foreground">Today's PNL</span>
+            <span
+              className={`font-mono font-medium ${totalTodayPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}
+              data-testid="text-today-pnl"
+            >
+              {balanceVisible
+                ? `${totalTodayPnl >= 0 ? "+" : ""}${formatAmount(totalTodayPnl)} USDT(${totalTodayPnl >= 0 ? "+" : ""}${totalTodayPnlPercent.toFixed(2)}%)`
+                : "****"}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex gap-3 mb-8">
+          <Button
+            variant="default"
+            className="bg-[#0ecb81] text-black font-semibold border-[#0ecb81]"
+            onClick={() => navigate("/")}
+            data-testid="button-add-funds"
+          >
+            Add Funds
+          </Button>
+          <Button variant="outline" data-testid="button-send" disabled>
+            Send
+          </Button>
+          <Button variant="outline" data-testid="button-transfer" disabled>
+            Transfer
+          </Button>
+        </div>
+
+        <div className="mb-4">
+          <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
+            <div className="flex items-center gap-4">
+              <span className="text-sm font-semibold text-foreground border-b-2 border-[#0ecb81] pb-1">
+                Crypto
+              </span>
+            </div>
+            <div className="relative w-full sm:w-56">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                type="search"
+                placeholder="Search..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 bg-card border-border font-mono text-sm"
+                data-testid="input-search-assets"
+              />
+            </div>
+          </div>
+
+          <div
+            className="rounded-md border border-border bg-card p-4 mb-3 hover-elevate cursor-pointer"
+            onClick={() => navigate("/")}
+            data-testid="card-asset-USDT"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-[#26A17B] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                  $
+                </div>
+                <div>
+                  <div className="font-semibold text-foreground">USDT</div>
+                  <div className="text-xs text-muted-foreground">Tether</div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="font-mono font-semibold text-foreground" data-testid="text-quantity-USDT">
+                  {formatQuantity(cashBalance)}
+                </div>
+                <div className="text-xs text-muted-foreground font-mono">
+                  {formatAmount(cashBalance)} USDT
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {filteredItems.map((item) => {
+            const flash = priceFlashes.get(item.symbol);
+            return (
+              <div
+                key={item.symbol}
+                className={`rounded-md border border-border bg-card p-4 mb-3 hover-elevate cursor-pointer transition-colors duration-300 ${
+                  flash === "up"
+                    ? "bg-[#0ecb81]/5"
+                    : flash === "down"
+                    ? "bg-[#f6465d]/5"
+                    : ""
+                }`}
+                onClick={() =>
+                  navigate(`/trade/${item.symbol.toLowerCase()}`)
+                }
+                data-testid={`card-asset-${item.coinName}`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-9 h-9 rounded-full ${item.colorClass} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}
+                    >
+                      {item.coinName.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-foreground">
+                        {item.coinName}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {item.fullName}
+                      </div>
+                      <div className="flex flex-col mt-1">
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">Today's PNL</span>
+                          <span
+                            className={`font-mono ${item.todayPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}
+                          >
+                            {balanceVisible
+                              ? `${item.todayPnl >= 0 ? "+" : ""}${item.todayPnl.toFixed(2)} USDT(${item.todayPnlPercent >= 0 ? "+" : ""}${item.todayPnlPercent.toFixed(2)}%)`
+                              : "****"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">Average Price</span>
+                          <span className="font-mono text-muted-foreground">
+                            {balanceVisible
+                              ? `${item.avgBuyPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`
+                              : "****"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="font-mono font-semibold text-foreground" data-testid={`text-quantity-${item.coinName}`}>
+                      {formatQuantity(item.quantity)}
+                    </div>
+                    <div className="text-xs text-muted-foreground font-mono">
+                      {formatAmount(item.currentValue)} USDT
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-end gap-2 mt-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                    disabled
+                    data-testid={`button-earn-${item.coinName}`}
+                  >
+                    Earn
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/trade/${item.symbol.toLowerCase()}`);
+                    }}
+                    data-testid={`button-trade-${item.coinName}`}
+                  >
+                    Trade
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+
+          {filteredItems.length === 0 && portfolioItems.length > 0 && (
+            <div className="text-center text-muted-foreground py-8 text-sm">
+              No assets found matching your search.
+            </div>
+          )}
+
+          {portfolioItems.length === 0 && (
+            <div className="text-center text-muted-foreground py-8 text-sm">
+              No crypto holdings yet. Buy some coins from the Market to see them here.
+            </div>
+          )}
+        </div>
+      </div>
+    </LayoutShell>
+  );
+}

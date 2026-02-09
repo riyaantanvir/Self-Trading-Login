@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Wallet, History, LogOut, TrendingUp } from "lucide-react";
+import { BarChart3, Wallet, History, LogOut, TrendingUp, Briefcase } from "lucide-react";
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   const { user, logoutMutation } = useAuth();
@@ -11,6 +11,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { label: "Market", icon: BarChart3, href: "/" },
+    { label: "Assets", icon: Briefcase, href: "/assets" },
     { label: "Portfolio", icon: Wallet, href: "/portfolio" },
     { label: "History", icon: History, href: "/history" },
   ];
