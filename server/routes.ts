@@ -558,9 +558,9 @@ export async function registerRoutes(
   });
 
   const depthCache: { [key: string]: { data: any; timestamp: number } } = {};
-  app.get("/api/market/orderbook-depth", async (req, res) => {
+  async function handleOrderbookDepth(req: any, res: any) {
     try {
-      const symbol = ((req.query.symbol as string) || "BTCUSDT").toUpperCase();
+      const symbol = ((req.params.symbol || req.query.symbol as string) || "BTCUSDT").toUpperCase();
       const now = Date.now();
       if (depthCache[symbol] && now - depthCache[symbol].timestamp < 10000) {
         return res.json(depthCache[symbol].data);
@@ -616,7 +616,9 @@ export async function registerRoutes(
       console.error("Depth error:", err);
       res.status(500).json({ message: "Failed to fetch order book depth" });
     }
-  });
+  }
+  app.get("/api/market/orderbook-depth/:symbol", handleOrderbookDepth);
+  app.get("/api/market/orderbook-depth", handleOrderbookDepth);
 
   const longShortCache: { data: any; timestamp: number } = { data: null, timestamp: 0 };
   app.get("/api/market/long-short", async (_req, res) => {

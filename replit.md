@@ -75,6 +75,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Cancel returns reserved balance (buy) or holdings (sell)
 
 ## Recent Changes
+- Feb 2026: MMT tab now has sub-navigation with 7 separate sections: Overview, Heatmap, Volume, Trends, Order Book, Liquidation, Sentiment (each in its own view)
 - Feb 2026: Enhanced MMT Analytics with order book depth/liquidity heatmap (bid/ask walls), liquidation map (estimated levels by leverage 2x-100x), net long/short sentiment (derived from order book pressure)
 - Feb 2026: Added MMT Analytics tab on Markets page (market overview cards, top gainers/losers, market heatmap, volume leaders, volume anomaly detection, trend meter with EMA 9/21/50 signals, all real-time from Binance data)
 - Feb 2026: Chart zoom/scroll now persists during 30-second data refreshes (in-place data updates instead of chart rebuild)
