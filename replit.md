@@ -69,6 +69,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Feb 2026: Fixed Today's PNL to use server-side calculation based on 6AM-6AM window (reverse-computes start-of-day state from current state + today's trades, uses Binance open prices for start-of-day valuation)
 - Feb 2026: Added Telegram integration for price alerts (user-configured bot token + chat ID, test message, toggle per alert)
 - Feb 2026: Added price alerts feature with DB persistence, server-side checking every 3s, WebSocket notifications, alerts page, and bell icon on token detail for quick alert creation
+- Feb 2026: Admin Panel: User Management & Balance Top-up now functional (view all users, add demo USDT via admin endpoints)
 - Feb 2026: Added Admin Panel page (admin-only, placeholder sections for user management, balance top-up, etc.)
 - Feb 2026: Added Assets page with Binance-style overview (total value, today's PNL, holdings with live data)
 - Feb 2026: Added watchlist feature with database persistence, 3-dot action menu on dashboard

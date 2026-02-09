@@ -7,6 +7,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserBalance(id: number, balance: number): Promise<void>;
+  getAllUsers(): Promise<User[]>;
 
   getTrades(userId: number): Promise<Trade[]>;
   getTradesSince(userId: number, since: Date): Promise<Trade[]>;
@@ -47,6 +48,10 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserBalance(id: number, balance: number): Promise<void> {
     await db.update(users).set({ balance }).where(eq(users.id, id));
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users);
   }
 
   async getTrades(userId: number): Promise<Trade[]> {

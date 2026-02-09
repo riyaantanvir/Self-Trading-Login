@@ -717,5 +717,43 @@ export async function registerRoutes(
     res.json(triggered);
   });
 
+  app.get("/api/admin/users", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
+    const allUsers = await storage.getAllUsers();
+    const safeUsers = allUsers.map(u => ({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      isAdmin: u.isAdmin,
+      balance: u.balance,
+    }));
+    res.json(safeUsers);
+  });
+
+  app.post("/api/admin/topup", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
+    try {
+      const schema = z.object({
+        userId: z.coerce.number().int().positive(),
+        amount: z.coerce.number().positive(),
+      });
+      const { userId, amount } = schema.parse(req.body);
+      const targetUser = await storage.getUser(userId);
+      if (!targetUser) return res.status(404).json({ message: "User not found" });
+      const newBalance = targetUser.balance + amount;
+      await storage.updateUserBalance(userId, newBalance);
+      res.json({ success: true, newBalance, username: targetUser.username });
+    } catch (e) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ message: e.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   return httpServer;
 }
