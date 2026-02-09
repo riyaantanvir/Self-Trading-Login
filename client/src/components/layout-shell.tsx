@@ -20,8 +20,8 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const adminItem = user.isAdmin ? { label: "Admin", icon: Shield, href: "/admin" } : null;
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <header className="h-12 sm:h-14 border-b border-border flex items-center justify-between px-3 sm:px-4 gap-2 sm:gap-4 bg-card/50 sticky top-0 z-50">
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="h-12 sm:h-14 border-b border-border flex items-center justify-between px-3 sm:px-4 gap-2 sm:gap-4 bg-card/50 sticky top-0 z-[9999]">
         <div className="flex items-center gap-4 sm:gap-6">
           <Link href="/">
             <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer" data-testid="link-home">
@@ -80,11 +80,11 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
+      <main className="pb-20 md:pb-4">
         {children}
       </main>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-stretch pb-safe" data-testid="nav-bottom-tabs">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[9999] bg-card border-t border-border flex items-stretch pb-safe" data-testid="nav-bottom-tabs">
         {navItems.map((item) => {
           const isActive = location === item.href;
           return (
