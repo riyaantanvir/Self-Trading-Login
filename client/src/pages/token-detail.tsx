@@ -963,14 +963,17 @@ export default function TokenDetail() {
   const coinName = symbol.replace("USDT", "");
   const [interval, setInterval_] = useState(() => {
     try {
-      return localStorage.getItem("chart_interval") || "1h";
+      return localStorage.getItem(`chart_interval_${symbol}`) || localStorage.getItem("chart_interval") || "1h";
     } catch { return "1h"; }
   });
 
   const setChartInterval = useCallback((val: string) => {
     setInterval_(val);
-    try { localStorage.setItem("chart_interval", val); } catch {}
-  }, []);
+    try {
+      localStorage.setItem(`chart_interval_${symbol}`, val);
+      localStorage.setItem("chart_interval", val);
+    } catch {}
+  }, [symbol]);
 
   const { connected, priceFlashes } = useBinanceWebSocket();
   const { data: tickers } = useTickers();
