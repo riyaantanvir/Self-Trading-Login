@@ -103,3 +103,49 @@ export function useRemoveFromWatchlist() {
     },
   });
 }
+
+export function useAlerts() {
+  return useQuery({
+    queryKey: ["/api/alerts"],
+    queryFn: async () => {
+      const res = await fetch("/api/alerts", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch alerts");
+      return await res.json();
+    },
+  });
+}
+
+export function useCreateAlert() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (data: { symbol: string; targetPrice: number; direction: string }) => {
+      const res = await apiRequest("POST", "/api/alerts", data);
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["/api/alerts"] });
+      toast({
+        title: "Alert Created",
+        description: `Alert set for ${data.symbol.replace("USDT", "")}/USDT ${data.direction} $${Number(data.targetPrice).toLocaleString()}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to create alert", description: error.message, variant: "destructive" });
+    },
+  });
+}
+
+export function useDeleteAlert() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async (alertId: number) => {
+      await apiRequest("DELETE", `/api/alerts/${alertId}`);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/alerts"] });
+      toast({ title: "Alert Deleted" });
+    },
+  });
+}

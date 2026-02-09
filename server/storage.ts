@@ -1,4 +1,4 @@
-import { users, trades, portfolio, watchlist, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist } from "@shared/schema";
+import { users, trades, portfolio, watchlist, priceAlerts, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert } from "@shared/schema";
 import { db } from "./db";
 import { eq, and } from "drizzle-orm";
 
@@ -18,6 +18,12 @@ export interface IStorage {
   getWatchlist(userId: number): Promise<Watchlist[]>;
   addToWatchlist(userId: number, symbol: string): Promise<Watchlist>;
   removeFromWatchlist(userId: number, symbol: string): Promise<void>;
+
+  getPriceAlerts(userId: number): Promise<PriceAlert[]>;
+  getActivePriceAlerts(): Promise<PriceAlert[]>;
+  createPriceAlert(userId: number, data: { symbol: string; targetPrice: number; direction: string }): Promise<PriceAlert>;
+  deletePriceAlert(userId: number, alertId: number): Promise<void>;
+  triggerPriceAlert(alertId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -92,6 +98,37 @@ export class DatabaseStorage implements IStorage {
     await db.delete(watchlist).where(
       and(eq(watchlist.userId, userId), eq(watchlist.symbol, symbol))
     );
+  }
+  async getPriceAlerts(userId: number): Promise<PriceAlert[]> {
+    return await db.select().from(priceAlerts).where(eq(priceAlerts.userId, userId));
+  }
+
+  async getActivePriceAlerts(): Promise<PriceAlert[]> {
+    return await db.select().from(priceAlerts).where(
+      and(eq(priceAlerts.isActive, true), eq(priceAlerts.triggered, false))
+    );
+  }
+
+  async createPriceAlert(userId: number, data: { symbol: string; targetPrice: number; direction: string }): Promise<PriceAlert> {
+    const [alert] = await db.insert(priceAlerts).values({
+      userId,
+      symbol: data.symbol,
+      targetPrice: data.targetPrice,
+      direction: data.direction,
+      isActive: true,
+      triggered: false,
+    }).returning();
+    return alert;
+  }
+
+  async deletePriceAlert(userId: number, alertId: number): Promise<void> {
+    await db.delete(priceAlerts).where(
+      and(eq(priceAlerts.id, alertId), eq(priceAlerts.userId, userId))
+    );
+  }
+
+  async triggerPriceAlert(alertId: number): Promise<void> {
+    await db.update(priceAlerts).set({ triggered: true, isActive: false, triggeredAt: new Date() }).where(eq(priceAlerts.id, alertId));
   }
 }
 

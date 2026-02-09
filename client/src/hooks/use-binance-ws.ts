@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 interface TickerData {
   symbol: string;
@@ -13,12 +15,15 @@ interface TickerData {
 
 export function useBinanceWebSocket() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { user } = useAuth();
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const mountedRef = useRef(true);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevPricesRef = useRef<Map<string, number>>(new Map());
   const [priceFlashes, setPriceFlashes] = useState<Map<string, "up" | "down">>(new Map());
+  const toastRef = useRef(toast);
 
   const updateTickers = useCallback((tickers: TickerData[]) => {
     const newFlashes = new Map<string, "up" | "down">();
@@ -69,6 +74,18 @@ export function useBinanceWebSocket() {
           if (msg.type === "tickers" && Array.isArray(msg.data)) {
             setConnected(true);
             updateTickers(msg.data);
+          }
+
+          if (msg.type === "alert_triggered" && msg.data) {
+            const d = msg.data;
+            if (user && d.userId === user.id) {
+              const coin = d.symbol.replace("USDT", "");
+              queryClient.invalidateQueries({ queryKey: ["/api/alerts"] });
+              toastRef.current({
+                title: `Price Alert: ${coin}/USDT`,
+                description: `${coin} is now ${d.direction === "above" ? "above" : "below"} $${Number(d.targetPrice).toLocaleString()} (Current: $${Number(d.currentPrice).toLocaleString()})`,
+              });
+            }
           }
         } catch {}
       };

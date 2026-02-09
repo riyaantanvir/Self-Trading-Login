@@ -1,0 +1,265 @@
+import { useState } from "react";
+import { LayoutShell } from "@/components/layout-shell";
+import { useAlerts, useCreateAlert, useDeleteAlert, useTickers } from "@/hooks/use-trades";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Bell, BellOff, Trash2, ArrowUp, ArrowDown, Plus, X, Check } from "lucide-react";
+
+export default function AlertsPage() {
+  const { data: alerts, isLoading } = useAlerts();
+  const { data: tickers } = useTickers();
+  const createAlert = useCreateAlert();
+  const deleteAlert = useDeleteAlert();
+  const [showCreate, setShowCreate] = useState(false);
+  const [symbol, setSymbol] = useState("");
+  const [targetPrice, setTargetPrice] = useState("");
+  const [direction, setDirection] = useState<"above" | "below">("above");
+  const [search, setSearch] = useState("");
+
+  const tickerList = (tickers as any[] | undefined) || [];
+  const filteredTickers = tickerList
+    .filter((t: any) => t.symbol.endsWith("USDT"))
+    .filter((t: any) => t.symbol.toLowerCase().includes(search.toLowerCase()))
+    .sort((a: any, b: any) => parseFloat(b.quoteVolume) - parseFloat(a.quoteVolume))
+    .slice(0, 20);
+
+  const activeAlerts = ((alerts as any[]) || []).filter((a: any) => a.isActive && !a.triggered);
+  const triggeredAlerts = ((alerts as any[]) || []).filter((a: any) => a.triggered);
+
+  const handleCreate = () => {
+    if (!symbol || !targetPrice) return;
+    createAlert.mutate(
+      { symbol, targetPrice: parseFloat(targetPrice), direction },
+      {
+        onSuccess: () => {
+          setShowCreate(false);
+          setSymbol("");
+          setTargetPrice("");
+          setDirection("above");
+          setSearch("");
+        },
+      }
+    );
+  };
+
+  const getCurrentPrice = (sym: string) => {
+    const t = tickerList.find((t: any) => t.symbol === sym);
+    return t ? parseFloat(t.lastPrice) : null;
+  };
+
+  return (
+    <LayoutShell>
+      <div className="p-4 max-w-2xl mx-auto space-y-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Bell className="w-5 h-5 text-[#f0b90b]" />
+            <h1 className="text-xl font-bold" data-testid="text-alerts-title">Price Alerts</h1>
+          </div>
+          <Button
+            size="sm"
+            className="gap-2"
+            onClick={() => setShowCreate(!showCreate)}
+            data-testid="button-create-alert"
+          >
+            {showCreate ? <X className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+            {showCreate ? "Cancel" : "New Alert"}
+          </Button>
+        </div>
+
+        {showCreate && (
+          <Card className="p-4 space-y-3">
+            <div className="text-sm font-medium text-muted-foreground">Create Price Alert</div>
+
+            {!symbol ? (
+              <div className="space-y-2">
+                <Input
+                  placeholder="Search coin..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  data-testid="input-alert-search"
+                />
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {filteredTickers.map((t: any) => {
+                    const coin = t.symbol.replace("USDT", "");
+                    const price = parseFloat(t.lastPrice);
+                    return (
+                      <button
+                        key={t.symbol}
+                        className="w-full flex items-center justify-between p-2 rounded-md hover-elevate text-left"
+                        onClick={() => {
+                          setSymbol(t.symbol);
+                          setTargetPrice(price.toString());
+                        }}
+                        data-testid={`button-select-coin-${t.symbol}`}
+                      >
+                        <span className="font-medium text-sm">{coin}/USDT</span>
+                        <span className="text-xs text-muted-foreground font-mono">${price.toLocaleString()}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{symbol.replace("USDT", "")}/USDT</span>
+                  <Button variant="ghost" size="icon" onClick={() => setSymbol("")} data-testid="button-change-coin">
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    variant={direction === "above" ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 gap-1"
+                    onClick={() => setDirection("above")}
+                    data-testid="button-direction-above"
+                  >
+                    <ArrowUp className="w-3 h-3" />
+                    Above
+                  </Button>
+                  <Button
+                    variant={direction === "below" ? "default" : "outline"}
+                    size="sm"
+                    className="flex-1 gap-1"
+                    onClick={() => setDirection("below")}
+                    data-testid="button-direction-below"
+                  >
+                    <ArrowDown className="w-3 h-3" />
+                    Below
+                  </Button>
+                </div>
+
+                <Input
+                  type="number"
+                  placeholder="Target price (USDT)"
+                  value={targetPrice}
+                  onChange={(e) => setTargetPrice(e.target.value)}
+                  data-testid="input-target-price"
+                />
+
+                <Button
+                  className="w-full gap-2"
+                  onClick={handleCreate}
+                  disabled={createAlert.isPending || !targetPrice}
+                  data-testid="button-confirm-alert"
+                >
+                  <Check className="w-4 h-4" />
+                  {createAlert.isPending ? "Creating..." : "Create Alert"}
+                </Button>
+              </div>
+            )}
+          </Card>
+        )}
+
+        <div className="space-y-2">
+          <div className="text-sm font-medium text-muted-foreground">Active Alerts ({activeAlerts.length})</div>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground text-sm">Loading...</div>
+          ) : activeAlerts.length === 0 ? (
+            <Card className="p-6 text-center">
+              <Bell className="w-8 h-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">No active alerts</p>
+              <p className="text-xs text-muted-foreground mt-1">Create an alert to get notified when a coin reaches your target price</p>
+            </Card>
+          ) : (
+            activeAlerts.map((alert: any) => {
+              const coin = alert.symbol.replace("USDT", "");
+              const currentPrice = getCurrentPrice(alert.symbol);
+              const progress = currentPrice
+                ? alert.direction === "above"
+                  ? Math.min(100, (currentPrice / alert.targetPrice) * 100)
+                  : Math.min(100, (alert.targetPrice / currentPrice) * 100)
+                : 0;
+
+              return (
+                <Card key={alert.id} className="p-3" data-testid={`card-alert-${alert.id}`}>
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-1.5 rounded-md ${alert.direction === "above" ? "bg-[#0ecb81]/10" : "bg-[#f6465d]/10"}`}>
+                        {alert.direction === "above" ? (
+                          <ArrowUp className="w-4 h-4 text-[#0ecb81]" />
+                        ) : (
+                          <ArrowDown className="w-4 h-4 text-[#f6465d]" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-medium text-sm">{coin}/USDT</div>
+                        <div className="text-xs text-muted-foreground">
+                          {alert.direction === "above" ? "Above" : "Below"} ${Number(alert.targetPrice).toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      {currentPrice !== null && (
+                        <div className="text-right">
+                          <div className="text-xs text-muted-foreground">Current</div>
+                          <div className="text-sm font-mono">${currentPrice.toLocaleString()}</div>
+                        </div>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteAlert.mutate(alert.id)}
+                        data-testid={`button-delete-alert-${alert.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="mt-2 h-1 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${alert.direction === "above" ? "bg-[#0ecb81]" : "bg-[#f6465d]"}`}
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                </Card>
+              );
+            })
+          )}
+        </div>
+
+        {triggeredAlerts.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-muted-foreground">Triggered ({triggeredAlerts.length})</div>
+            {triggeredAlerts.map((alert: any) => {
+              const coin = alert.symbol.replace("USDT", "");
+              return (
+                <Card key={alert.id} className="p-3 opacity-60" data-testid={`card-triggered-${alert.id}`}>
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <div className="p-1.5 rounded-md bg-muted">
+                        <BellOff className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-sm">{coin}/USDT</div>
+                        <div className="text-xs text-muted-foreground">
+                          {alert.direction === "above" ? "Above" : "Below"} ${Number(alert.targetPrice).toLocaleString()}
+                          {alert.triggeredAt && (
+                            <span className="ml-2">
+                              {new Date(alert.triggeredAt).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => deleteAlert.mutate(alert.id)}
+                      data-testid={`button-delete-triggered-${alert.id}`}
+                    >
+                      <Trash2 className="w-4 h-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </LayoutShell>
+  );
+}

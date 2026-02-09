@@ -115,6 +115,37 @@ function setupBinanceLiveStream(httpServer: Server) {
     broadcast({ type: "tickers", data: tickers });
   }, 1000);
 
+  setInterval(async () => {
+    if (tickerMap.size === 0) return;
+    try {
+      const activeAlerts = await storage.getActivePriceAlerts();
+      for (const alert of activeAlerts) {
+        const ticker = tickerMap.get(alert.symbol);
+        if (!ticker) continue;
+        const currentPrice = parseFloat(ticker.lastPrice);
+        const shouldTrigger =
+          (alert.direction === "above" && currentPrice >= alert.targetPrice) ||
+          (alert.direction === "below" && currentPrice <= alert.targetPrice);
+        if (shouldTrigger) {
+          await storage.triggerPriceAlert(alert.id);
+          broadcast({
+            type: "alert_triggered",
+            data: {
+              id: alert.id,
+              userId: alert.userId,
+              symbol: alert.symbol,
+              targetPrice: alert.targetPrice,
+              direction: alert.direction,
+              currentPrice,
+            },
+          });
+        }
+      }
+    } catch (err) {
+      console.error("[Alert Check] Error:", err);
+    }
+  }, 3000);
+
   connectBinance();
 
   wss.on("connection", (ws) => {
@@ -288,6 +319,46 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.sendStatus(401);
     await storage.removeFromWatchlist(req.user!.id, req.params.symbol);
     res.json({ success: true });
+  });
+
+  app.get("/api/alerts", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const alerts = await storage.getPriceAlerts(req.user!.id);
+    res.json(alerts);
+  });
+
+  app.post("/api/alerts", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const schema = z.object({
+        symbol: z.string().min(1),
+        targetPrice: z.coerce.number().positive(),
+        direction: z.enum(["above", "below"]),
+      });
+      const data = schema.parse(req.body);
+      const alert = await storage.createPriceAlert(req.user!.id, data);
+      res.status(201).json(alert);
+    } catch (e) {
+      if (e instanceof z.ZodError) {
+        return res.status(400).json({ message: e.errors[0].message });
+      }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/alerts/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const alertId = parseInt(req.params.id);
+    if (isNaN(alertId)) return res.status(400).json({ message: "Invalid alert ID" });
+    await storage.deletePriceAlert(req.user!.id, alertId);
+    res.json({ success: true });
+  });
+
+  app.get("/api/alerts/triggered", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const alerts = await storage.getPriceAlerts(req.user!.id);
+    const triggered = alerts.filter(a => a.triggered);
+    res.json(triggered);
   });
 
   return httpServer;

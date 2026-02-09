@@ -37,6 +37,18 @@ export const watchlist = pgTable("watchlist", {
   symbol: text("symbol").notNull(),
 });
 
+export const priceAlerts = pgTable("price_alerts", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  symbol: text("symbol").notNull(),
+  targetPrice: doublePrecision("target_price").notNull(),
+  direction: text("direction").notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  triggered: boolean("triggered").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  triggeredAt: timestamp("triggered_at"),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertTradeSchema = createInsertSchema(trades).omit({ id: true, userId: true, timestamp: true, total: true });
 export const insertPortfolioSchema = createInsertSchema(portfolio).omit({ id: true });
@@ -50,3 +62,7 @@ export type Portfolio = typeof portfolio.$inferSelect;
 export type InsertPortfolio = z.infer<typeof insertPortfolioSchema>;
 export type Watchlist = typeof watchlist.$inferSelect;
 export type InsertWatchlist = z.infer<typeof insertWatchlistSchema>;
+
+export const insertPriceAlertSchema = createInsertSchema(priceAlerts).omit({ id: true, userId: true, createdAt: true, triggeredAt: true });
+export type PriceAlert = typeof priceAlerts.$inferSelect;
+export type InsertPriceAlert = z.infer<typeof insertPriceAlertSchema>;

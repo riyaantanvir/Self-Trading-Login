@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useRoute, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
-import { useCreateTrade, useTickers, usePortfolio } from "@/hooks/use-trades";
+import { useCreateTrade, useTickers, usePortfolio, useCreateAlert } from "@/hooks/use-trades";
 import { useAuth } from "@/hooks/use-auth";
 import { LayoutShell } from "@/components/layout-shell";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
   WifiOff,
   BarChart3,
   ChevronDown,
+  Bell,
 } from "lucide-react";
 import {
   Sheet,
@@ -551,6 +552,10 @@ export default function TokenDetail() {
 
   const [isBuySheetOpen, setIsBuySheetOpen] = useState(false);
   const [isSellSheetOpen, setIsSellSheetOpen] = useState(false);
+  const [isAlertSheetOpen, setIsAlertSheetOpen] = useState(false);
+  const [alertPrice, setAlertPrice] = useState("");
+  const [alertDirection, setAlertDirection] = useState<"above" | "below">("above");
+  const createAlert = useCreateAlert();
 
   if (!ticker) {
     return (
@@ -618,7 +623,18 @@ export default function TokenDetail() {
             </div>
           </div>
 
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                setAlertPrice(currentPrice.toString());
+                setIsAlertSheetOpen(true);
+              }}
+              data-testid="button-set-alert"
+            >
+              <Bell className="w-4 h-4 text-[#f0b90b]" />
+            </Button>
             {connected ? (
               <Badge variant="outline" className="gap-1 text-[#0ecb81] border-[#0ecb81]/30 text-[10px] no-default-hover-elevate no-default-active-elevate" data-testid="badge-ws-status">
                 <Wifi className="w-3 h-3" />
@@ -708,6 +724,59 @@ export default function TokenDetail() {
             </SheetContent>
           </Sheet>
         </div>
+
+        <Sheet open={isAlertSheetOpen} onOpenChange={setIsAlertSheetOpen}>
+          <SheetContent side="bottom" className="h-auto max-h-[50vh] px-0 pb-safe">
+            <SheetHeader className="px-4 pb-2 border-b border-border">
+              <SheetTitle>Set Price Alert - {coinName}/USDT</SheetTitle>
+            </SheetHeader>
+            <div className="p-4 space-y-3">
+              <div className="flex gap-2">
+                <Button
+                  variant={alertDirection === "above" ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setAlertDirection("above")}
+                  data-testid="button-alert-above"
+                >
+                  Price goes above
+                </Button>
+                <Button
+                  variant={alertDirection === "below" ? "default" : "outline"}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setAlertDirection("below")}
+                  data-testid="button-alert-below"
+                >
+                  Price goes below
+                </Button>
+              </div>
+              <Input
+                type="number"
+                placeholder="Target price (USDT)"
+                value={alertPrice}
+                onChange={(e) => setAlertPrice(e.target.value)}
+                data-testid="input-alert-price"
+              />
+              <div className="text-xs text-muted-foreground">
+                Current price: ${formatPrice(currentPrice)}
+              </div>
+              <Button
+                className="w-full"
+                disabled={createAlert.isPending || !alertPrice}
+                onClick={() => {
+                  createAlert.mutate(
+                    { symbol, targetPrice: parseFloat(alertPrice), direction: alertDirection },
+                    { onSuccess: () => setIsAlertSheetOpen(false) }
+                  );
+                }}
+                data-testid="button-confirm-price-alert"
+              >
+                {createAlert.isPending ? "Creating..." : "Create Alert"}
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
 
         <div className="flex border-t border-border overflow-x-auto bg-card/30">
           <TickerBar />
