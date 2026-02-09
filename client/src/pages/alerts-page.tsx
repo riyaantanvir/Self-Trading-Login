@@ -22,7 +22,7 @@ export default function AlertsPage() {
   const [symbol, setSymbol] = useState("");
   const [targetPrice, setTargetPrice] = useState("");
   const [direction, setDirection] = useState<"above" | "below">("above");
-  const [notifyTelegram, setNotifyTelegram] = useState(false);
+  const [notifyTelegram, setNotifyTelegram] = useState(true);
   const [search, setSearch] = useState("");
 
   const [tgBotToken, setTgBotToken] = useState((user as any)?.telegramBotToken || "");
@@ -50,7 +50,7 @@ export default function AlertsPage() {
           setSymbol("");
           setTargetPrice("");
           setDirection("above");
-          setNotifyTelegram(false);
+          setNotifyTelegram(true);
           setSearch("");
         },
       }
