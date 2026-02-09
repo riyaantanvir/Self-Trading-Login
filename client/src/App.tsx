@@ -12,6 +12,7 @@ import PortfolioPage from "@/pages/portfolio-page";
 import HistoryPage from "@/pages/history-page";
 import TokenDetail from "@/pages/token-detail";
 import AssetsPage from "@/pages/assets-page";
+import AdminPanel from "@/pages/admin-panel";
 
 function Router() {
   return (
@@ -22,6 +23,7 @@ function Router() {
       <ProtectedRoute path="/assets" component={AssetsPage} />
       <ProtectedRoute path="/portfolio" component={PortfolioPage} />
       <ProtectedRoute path="/history" component={HistoryPage} />
+      <ProtectedRoute path="/admin" component={AdminPanel} />
       <Route component={NotFound} />
     </Switch>
   );

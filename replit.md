@@ -26,6 +26,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `/assets` - Assets overview (Binance-style, total value, today's PNL, holdings list)
 - `/portfolio` - Holdings and P&L
 - `/history` - Trade history
+- `/admin` - Admin panel (admin-only, placeholder for future settings)
 
 ## API Endpoints
 - `GET /api/market/tickers` - Live cached ticker data (from Binance WS)
@@ -46,6 +47,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Password: Admin
 
 ## Recent Changes
+- Feb 2026: Added Admin Panel page (admin-only, placeholder sections for user management, balance top-up, etc.)
 - Feb 2026: Added Assets page with Binance-style overview (total value, today's PNL, holdings with live data)
 - Feb 2026: Added watchlist feature with database persistence, 3-dot action menu on dashboard
 - Feb 2026: Improved trade panel with USDT/Token toggle, min 5 USDT, sell shows holdings
