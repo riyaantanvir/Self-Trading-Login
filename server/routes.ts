@@ -294,18 +294,25 @@ function setupBinanceLiveStream(httpServer: Server) {
           if (order.type === "buy" && currentPrice >= (order.stopPrice || 0)) shouldExecute = true;
           if (order.type === "sell" && currentPrice <= (order.stopPrice || 0)) shouldExecute = true;
         } else if (order.orderType === "stop_limit") {
-          const stopTriggered =
-            (order.type === "buy" && currentPrice >= (order.stopPrice || 0)) ||
-            (order.type === "sell" && currentPrice <= (order.stopPrice || 0));
-          if (stopTriggered) {
+          if (order.stopTriggered) {
             if (order.type === "buy" && currentPrice <= (order.limitPrice || 0)) shouldExecute = true;
             if (order.type === "sell" && currentPrice >= (order.limitPrice || 0)) shouldExecute = true;
+          } else {
+            const stopHit =
+              (order.type === "buy" && currentPrice >= (order.stopPrice || 0)) ||
+              (order.type === "sell" && currentPrice <= (order.stopPrice || 0));
+            if (stopHit) {
+              await storage.markStopTriggered(order.id);
+              console.log(`[Order] Stop triggered for order ${order.id} ${order.type} ${order.symbol} at $${currentPrice}`);
+              if (order.type === "buy" && currentPrice <= (order.limitPrice || 0)) shouldExecute = true;
+              if (order.type === "sell" && currentPrice >= (order.limitPrice || 0)) shouldExecute = true;
+            }
           }
         }
 
         if (shouldExecute) {
           try {
-            const execPrice = order.orderType === "limit" ? (order.limitPrice || currentPrice) : currentPrice;
+            const execPrice = (order.orderType === "limit" || order.orderType === "stop_limit") ? (order.limitPrice || currentPrice) : currentPrice;
             const total = order.quantity * execPrice;
             const user = await storage.getUser(order.userId);
             if (!user) continue;

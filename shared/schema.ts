@@ -25,6 +25,7 @@ export const trades = pgTable("trades", {
   orderType: text("order_type").default("market").notNull(),
   limitPrice: doublePrecision("limit_price"),
   stopPrice: doublePrecision("stop_price"),
+  stopTriggered: integer("stop_triggered").default(0).notNull(),
   timestamp: timestamp("timestamp").defaultNow(),
 });
 

@@ -14,6 +14,7 @@ export interface IStorage {
   createTrade(trade: InsertTrade & { userId: number; total: number }): Promise<Trade>;
   getPendingOrders(): Promise<Trade[]>;
   updateTradeStatus(tradeId: number, status: string, executedPrice?: number, executedTotal?: number): Promise<void>;
+  markStopTriggered(tradeId: number): Promise<void>;
 
   getPortfolio(userId: number): Promise<Portfolio[]>;
   getPortfolioItem(userId: number, symbol: string): Promise<Portfolio | undefined>;
@@ -84,6 +85,10 @@ export class DatabaseStorage implements IStorage {
       updates.total = executedTotal;
     }
     await db.update(trades).set(updates).where(eq(trades.id, tradeId));
+  }
+
+  async markStopTriggered(tradeId: number): Promise<void> {
+    await db.update(trades).set({ stopTriggered: 1 }).where(eq(trades.id, tradeId));
   }
 
   async getPortfolio(userId: number): Promise<Portfolio[]> {
