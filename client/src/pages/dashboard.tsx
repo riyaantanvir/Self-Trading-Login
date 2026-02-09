@@ -1,10 +1,12 @@
 import { useState, useMemo } from "react";
 import { useTickers } from "@/hooks/use-trades";
+import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
 import { LayoutShell } from "@/components/layout-shell";
 import { TradeDialog } from "@/components/new-trade-dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, Search, ArrowUpDown } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Search, ArrowUpDown, Wifi, WifiOff } from "lucide-react";
 
 interface Ticker {
   symbol: string;
@@ -18,6 +20,7 @@ interface Ticker {
 
 export default function Dashboard() {
   const { data: tickers, isLoading } = useTickers();
+  const { connected, source } = useBinanceWebSocket();
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<"symbol" | "lastPrice" | "priceChangePercent" | "quoteVolume">("quoteVolume");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
@@ -199,8 +202,18 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="mt-3 text-xs text-muted-foreground text-center">
-          Prices update every 5 seconds from Binance Testnet
+        <div className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
+          {connected ? (
+            <Badge variant="outline" className="gap-1 text-[#0ecb81] border-[#0ecb81]/30 no-default-hover-elevate no-default-active-elevate" data-testid="badge-ws-status">
+              <Wifi className="w-3 h-3" />
+              Live via {source === "direct" ? "Binance WebSocket" : "Server Relay"}
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="gap-1 text-muted-foreground no-default-hover-elevate no-default-active-elevate" data-testid="badge-ws-status">
+              <WifiOff className="w-3 h-3" />
+              REST API (updates every 5s)
+            </Badge>
+          )}
         </div>
       </div>
 

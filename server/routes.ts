@@ -3,6 +3,7 @@ import type { Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, hashPassword } from "./auth";
 import { z } from "zod";
+import { WebSocketServer, WebSocket } from "ws";
 
 const COINGECKO_BASE = "https://api.coingecko.com/api/v3";
 
@@ -51,7 +52,7 @@ async function fetchCoinGeckoTickers() {
     const url = `${COINGECKO_BASE}/coins/markets?vs_currency=usd&ids=${ids}&order=market_cap_desc&per_page=20&page=1&sparkline=false&price_change_percentage=24h`;
     const response = await fetch(url);
     if (!response.ok) {
-      console.error("CoinGecko API error:", response.status, await response.text());
+      console.error("CoinGecko API error:", response.status);
       return tickerCache;
     }
     const data = await response.json();
@@ -76,6 +77,80 @@ async function fetchCoinGeckoTickers() {
   }
 }
 
+function setupBinanceWSRelay(httpServer: Server) {
+  const wss = new WebSocketServer({ server: httpServer, path: "/ws/market" });
+  const BINANCE_WS_URL = "wss://testnet.binance.vision/stream?streams=!ticker@arr";
+  let binanceWs: WebSocket | null = null;
+  let clients = new Set<WebSocket>();
+  let reconnectTimer: NodeJS.Timeout | null = null;
+  let binanceConnected = false;
+
+  function connectBinance() {
+    if (binanceWs) {
+      try { binanceWs.close(); } catch {}
+    }
+
+    try {
+      binanceWs = new WebSocket(BINANCE_WS_URL);
+
+      binanceWs.on("open", () => {
+        console.log("[Binance WS] Connected to testnet stream");
+        binanceConnected = true;
+      });
+
+      binanceWs.on("message", (data) => {
+        const msg = data.toString();
+        clients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(msg);
+          }
+        });
+      });
+
+      binanceWs.on("error", (err) => {
+        console.error("[Binance WS] Error:", err.message);
+        binanceConnected = false;
+      });
+
+      binanceWs.on("close", () => {
+        console.log("[Binance WS] Disconnected, will retry in 10s");
+        binanceConnected = false;
+        if (!reconnectTimer) {
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            if (clients.size > 0) {
+              connectBinance();
+            }
+          }, 10000);
+        }
+      });
+    } catch (err) {
+      console.error("[Binance WS] Connection failed:", err);
+      binanceConnected = false;
+    }
+  }
+
+  wss.on("connection", (ws) => {
+    clients.add(ws);
+    ws.send(JSON.stringify({ type: "status", binanceConnected }));
+
+    if (!binanceConnected && clients.size === 1) {
+      connectBinance();
+    }
+
+    ws.on("close", () => {
+      clients.delete(ws);
+      if (clients.size === 0 && binanceWs) {
+        try { binanceWs.close(); } catch {}
+        binanceWs = null;
+        binanceConnected = false;
+      }
+    });
+  });
+
+  return wss;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express,
@@ -94,6 +169,8 @@ export async function registerRoutes(
     console.log("Admin user seeded");
   }
 
+  setupBinanceWSRelay(httpServer);
+
   app.get("/api/market/tickers", async (_req, res) => {
     try {
       const tickers = await fetchCoinGeckoTickers();
@@ -104,7 +181,6 @@ export async function registerRoutes(
     }
   });
 
-  // Trades
   app.get("/api/trades", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const userTrades = await storage.getTrades(req.user!.id);
@@ -171,7 +247,6 @@ export async function registerRoutes(
     }
   });
 
-  // Portfolio
   app.get("/api/portfolio", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const items = await storage.getPortfolio(req.user!.id);
