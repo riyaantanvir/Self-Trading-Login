@@ -146,8 +146,8 @@ export default function PnlPage() {
             <div className="flex items-center gap-2 mb-1">
               <span className="text-sm text-muted-foreground">Total Value (USDT)</span>
             </div>
-            <div className="flex items-baseline gap-2 mb-3">
-              <span className="text-3xl font-bold text-foreground font-mono" data-testid="text-pnl-total-value">
+            <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+              <span className="text-2xl sm:text-3xl font-bold text-foreground font-mono" data-testid="text-pnl-total-value">
                 {currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
@@ -155,32 +155,32 @@ export default function PnlPage() {
               ~ ${currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
 
-            <div className="grid grid-cols-3 gap-4 border-t border-border pt-3">
-              <div>
-                <div className="text-xs text-muted-foreground mb-1 border-b border-dotted border-muted-foreground/30 pb-1 inline-block">Today's PNL</div>
-                <div className={`text-sm font-semibold font-mono ${pnlColor(todayPnl)}`} data-testid="text-pnl-today-percent">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 border-t border-border pt-3">
+              <div className="min-w-0">
+                <div className="text-[10px] sm:text-xs text-muted-foreground mb-1 border-b border-dotted border-muted-foreground/30 pb-1 inline-block">Today</div>
+                <div className={`text-xs sm:text-sm font-semibold font-mono ${pnlColor(todayPnl)}`} data-testid="text-pnl-today-percent">
                   {formatPercent(todayPnlPercent)}
                 </div>
-                <div className={`text-xs font-mono ${pnlColor(todayPnl)}`}>
-                  {formatPnl(todayPnl)} USDT
+                <div className={`text-[10px] sm:text-xs font-mono truncate ${pnlColor(todayPnl)}`}>
+                  {formatPnl(todayPnl)}
                 </div>
               </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-1 border-b border-dotted border-muted-foreground/30 pb-1 inline-block">7D PNL</div>
-                <div className={`text-sm font-semibold font-mono ${pnlColor(weeklyPnl)}`} data-testid="text-pnl-7d-percent">
+              <div className="min-w-0">
+                <div className="text-[10px] sm:text-xs text-muted-foreground mb-1 border-b border-dotted border-muted-foreground/30 pb-1 inline-block">7D</div>
+                <div className={`text-xs sm:text-sm font-semibold font-mono ${pnlColor(weeklyPnl)}`} data-testid="text-pnl-7d-percent">
                   {formatPercent(weeklyPnlPercent)}
                 </div>
-                <div className={`text-xs font-mono ${pnlColor(weeklyPnl)}`}>
-                  {formatPnl(weeklyPnl)} USDT
+                <div className={`text-[10px] sm:text-xs font-mono truncate ${pnlColor(weeklyPnl)}`}>
+                  {formatPnl(weeklyPnl)}
                 </div>
               </div>
-              <div>
-                <div className="text-xs text-muted-foreground mb-1 border-b border-dotted border-muted-foreground/30 pb-1 inline-block">Cumulative PNL</div>
-                <div className={`text-sm font-semibold font-mono ${pnlColor(cumulativePnl)}`} data-testid="text-pnl-cumulative-percent">
+              <div className="min-w-0">
+                <div className="text-[10px] sm:text-xs text-muted-foreground mb-1 border-b border-dotted border-muted-foreground/30 pb-1 inline-block">Cumulative</div>
+                <div className={`text-xs sm:text-sm font-semibold font-mono ${pnlColor(cumulativePnl)}`} data-testid="text-pnl-cumulative-percent">
                   {formatPercent(cumulativePnlPercent)}
                 </div>
-                <div className={`text-xs font-mono ${pnlColor(cumulativePnl)}`}>
-                  {formatPnl(cumulativePnl)} USDT
+                <div className={`text-[10px] sm:text-xs font-mono truncate ${pnlColor(cumulativePnl)}`}>
+                  {formatPnl(cumulativePnl)}
                 </div>
               </div>
             </div>

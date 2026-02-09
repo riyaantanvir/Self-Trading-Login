@@ -234,27 +234,27 @@ export default function AssetsPage() {
               )}
             </button>
           </div>
-          <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-3xl font-bold text-foreground font-mono" data-testid="text-total-value">
+          <div className="flex items-baseline gap-2 mb-1 flex-wrap">
+            <span className="text-2xl sm:text-3xl font-bold text-foreground font-mono" data-testid="text-total-value">
               {formatAmount(totalEstValue)}
             </span>
-            <span className="text-lg text-muted-foreground">USDT</span>
+            <span className="text-base sm:text-lg text-muted-foreground">USDT</span>
           </div>
           <div className="text-sm text-muted-foreground mb-1" data-testid="text-total-usd">
             {balanceVisible ? `~ $${formatAmount(totalEstValue)}` : "~ $****"}
           </div>
           <div
-            className="flex items-center gap-1 text-sm cursor-pointer group"
+            className="flex flex-wrap items-center gap-1 text-sm cursor-pointer group"
             onClick={() => navigate("/pnl")}
             data-testid="link-today-pnl"
           >
             <span className="text-muted-foreground group-hover:underline">Today's PNL</span>
             <span
-              className={`font-mono font-medium group-hover:underline ${totalTodayPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}
+              className={`font-mono font-medium group-hover:underline text-xs sm:text-sm ${totalTodayPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}
               data-testid="text-today-pnl"
             >
               {balanceVisible
-                ? `${totalTodayPnl >= 0 ? "+" : ""}${formatAmount(totalTodayPnl)} USDT(${totalTodayPnl >= 0 ? "+" : ""}${totalTodayPnlPercent.toFixed(2)}%)`
+                ? `${totalTodayPnl >= 0 ? "+" : ""}${formatAmount(totalTodayPnl)} USDT (${totalTodayPnl >= 0 ? "+" : ""}${totalTodayPnlPercent.toFixed(2)}%)`
                 : "****"}
             </span>
           </div>
@@ -354,20 +354,20 @@ export default function AssetsPage() {
                       <div className="text-xs text-muted-foreground">
                         {item.fullName}
                       </div>
-                      <div className="flex flex-col mt-1">
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">Today's PNL</span>
+                      <div className="flex flex-col mt-1 min-w-0">
+                        <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs flex-wrap">
+                          <span className="text-muted-foreground">PNL</span>
                           <span
-                            className={`font-mono ${item.todayPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}
+                            className={`font-mono truncate ${item.todayPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}
                           >
                             {balanceVisible
-                              ? `${item.todayPnl >= 0 ? "+" : ""}${item.todayPnl.toFixed(2)} USDT(${item.todayPnlPercent >= 0 ? "+" : ""}${item.todayPnlPercent.toFixed(2)}%)`
+                              ? `${item.todayPnl >= 0 ? "+" : ""}${item.todayPnl.toFixed(2)} (${item.todayPnlPercent >= 0 ? "+" : ""}${item.todayPnlPercent.toFixed(2)}%)`
                               : "****"}
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-muted-foreground">Average Price</span>
-                          <span className="font-mono text-muted-foreground">
+                        <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs">
+                          <span className="text-muted-foreground">Avg</span>
+                          <span className="font-mono text-muted-foreground truncate">
                             {balanceVisible
                               ? `${item.avgBuyPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT`
                               : "****"}

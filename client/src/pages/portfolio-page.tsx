@@ -124,7 +124,7 @@ export default function PortfolioPage() {
           </Card>
         </div>
 
-        <div className="rounded-md border border-border overflow-hidden bg-card">
+        <div className="hidden md:block rounded-md border border-border overflow-hidden bg-card">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -195,6 +195,74 @@ export default function PortfolioPage() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        <div className="md:hidden space-y-2">
+          {portfolioItems.length > 0 ? (
+            portfolioItems.map((item) => {
+              const coinName = item.symbol.replace("USDT", "");
+              return (
+                <div
+                  key={item.id}
+                  className="rounded-md border border-border bg-card p-3"
+                  data-testid={`card-portfolio-${item.symbol}`}
+                >
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <div>
+                      <span className="font-semibold text-foreground">{coinName}</span>
+                      <span className="text-xs text-muted-foreground">/USDT</span>
+                    </div>
+                    <div className={`font-mono text-sm font-semibold ${item.pnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+                      {item.pnl >= 0 ? "+" : ""}{item.pnlPercent.toFixed(2)}%
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2">
+                    <div className="flex justify-between gap-1">
+                      <span className="text-muted-foreground">Qty</span>
+                      <span className="font-mono text-foreground">{item.quantity.toFixed(6)}</span>
+                    </div>
+                    <div className="flex justify-between gap-1">
+                      <span className="text-muted-foreground">Value</span>
+                      <span className="font-mono font-semibold text-foreground">${item.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between gap-1">
+                      <span className="text-muted-foreground">Avg Buy</span>
+                      <span className="font-mono text-muted-foreground">${item.avgBuyPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+                    </div>
+                    <div className="flex justify-between gap-1">
+                      <span className="text-muted-foreground">P&L</span>
+                      <span className={`font-mono ${item.pnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+                        {item.pnl >= 0 ? "+" : ""}${item.pnl.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                  {item.quantity > 0 && (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="w-full text-xs"
+                      data-testid={`button-sell-all-mobile-${item.symbol}`}
+                      onClick={() =>
+                        setSellTarget({
+                          symbol: item.symbol,
+                          coinName,
+                          quantity: item.quantity,
+                          currentPrice: item.currentPrice,
+                          currentValue: item.currentValue,
+                        })
+                      }
+                    >
+                      Sell All
+                    </Button>
+                  )}
+                </div>
+              );
+            })
+          ) : (
+            <div className="p-8 text-center text-muted-foreground text-sm">
+              No holdings yet. Buy some coins from the Market page to see them here.
+            </div>
+          )}
         </div>
       </div>
 

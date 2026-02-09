@@ -1000,19 +1000,19 @@ export default function TokenDetail() {
 
   return (
     <LayoutShell>
-      <div className="flex flex-col h-[calc(100vh-3rem)] md:h-[calc(100vh-3.5rem)] overflow-hidden">
+      <div className="flex flex-col h-[calc(100vh-3rem-4rem)] md:h-[calc(100vh-3.5rem)] overflow-hidden">
         <div className="px-2 sm:px-4 py-1.5 sm:py-2 border-b border-border bg-card/50">
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
             <Link href="/">
-              <Button variant="ghost" size="icon" data-testid="button-back">
+              <Button variant="ghost" size="icon" className="flex-shrink-0" data-testid="button-back">
                 <ArrowLeft className="w-4 h-4" />
               </Button>
             </Link>
 
-            <span className="text-sm sm:text-lg font-bold text-foreground" data-testid="text-symbol">{coinName}/USDT</span>
+            <span className="text-sm sm:text-lg font-bold text-foreground flex-shrink-0" data-testid="text-symbol">{coinName}/USDT</span>
 
             <span
-              className={`text-base sm:text-xl font-bold font-mono transition-colors duration-300 ${
+              className={`text-sm sm:text-xl font-bold font-mono transition-colors duration-300 truncate ${
                 flash === "up" ? "text-[#0ecb81]" : flash === "down" ? "text-[#f6465d]" : "text-foreground"
               }`}
               data-testid="text-current-price"
@@ -1021,7 +1021,7 @@ export default function TokenDetail() {
             </span>
 
             <span
-              className={`text-xs font-mono font-semibold ${
+              className={`text-[10px] sm:text-xs font-mono font-semibold flex-shrink-0 ${
                 isPositive ? "text-[#0ecb81]" : "text-[#f6465d]"
               }`}
               data-testid="badge-change"
@@ -1029,7 +1029,7 @@ export default function TokenDetail() {
               {isPositive ? "+" : ""}{change.toFixed(2)}%
             </span>
 
-            <div className="ml-auto flex items-center gap-1 sm:gap-2">
+            <div className="ml-auto flex items-center gap-1 sm:gap-2 flex-shrink-0">
               <Button
                 variant="ghost"
                 size="icon"
@@ -1406,7 +1406,7 @@ export default function TokenDetail() {
           </SheetContent>
         </Sheet>
 
-        <div className="flex border-t border-border overflow-x-auto bg-card/30">
+        <div className="hidden md:flex border-t border-border overflow-x-auto bg-card/30">
           <TickerBar />
         </div>
       </div>

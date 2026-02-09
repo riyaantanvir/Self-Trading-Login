@@ -84,7 +84,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-stretch" data-testid="nav-bottom-tabs">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border flex items-stretch pb-safe" data-testid="nav-bottom-tabs">
         {navItems.map((item) => {
           const isActive = location === item.href;
           return (
