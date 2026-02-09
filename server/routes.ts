@@ -167,6 +167,33 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/market/klines", async (req, res) => {
+    try {
+      const symbol = (req.query.symbol as string || "BTCUSDT").toUpperCase();
+      const interval = (req.query.interval as string) || "1h";
+      const limit = Math.min(parseInt(req.query.limit as string) || 500, 1000);
+
+      const url = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        return res.status(502).json({ message: "Failed to fetch klines" });
+      }
+      const data = await response.json();
+      const klines = (data as any[]).map((k: any) => ({
+        time: Math.floor(k[0] / 1000),
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+      }));
+      res.json(klines);
+    } catch (err) {
+      console.error("Klines error:", err);
+      res.status(502).json({ message: "Failed to fetch klines" });
+    }
+  });
+
   app.get("/api/trades", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const userTrades = await storage.getTrades(req.user!.id);

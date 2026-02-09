@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
 import { useTickers } from "@/hooks/use-trades";
 import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
 import { LayoutShell } from "@/components/layout-shell";
-import { TradeDialog } from "@/components/new-trade-dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,9 +24,7 @@ export default function Dashboard() {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<"symbol" | "lastPrice" | "priceChangePercent" | "quoteVolume">("quoteVolume");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [tradeSymbol, setTradeSymbol] = useState("");
-  const [tradePrice, setTradePrice] = useState(0);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [, navigate] = useLocation();
 
   const filteredTickers = useMemo(() => {
     if (!tickers) return [];
@@ -54,10 +52,8 @@ export default function Dashboard() {
     }
   }
 
-  function openTrade(ticker: Ticker) {
-    setTradeSymbol(ticker.symbol);
-    setTradePrice(parseFloat(ticker.lastPrice));
-    setDialogOpen(true);
+  function openToken(ticker: Ticker) {
+    navigate(`/trade/${ticker.symbol.toLowerCase()}`);
   }
 
   function formatPrice(price: string) {
@@ -154,7 +150,7 @@ export default function Dashboard() {
                       key={ticker.symbol}
                       className={`border-b border-border/50 hover-elevate cursor-pointer transition-colors duration-300 ${flashClass}`}
                       data-testid={`row-ticker-${ticker.symbol}`}
-                      onClick={() => openTrade(ticker)}
+                      onClick={() => openToken(ticker)}
                     >
                       <td className="p-3">
                         <div className="flex items-center gap-2">
@@ -190,7 +186,7 @@ export default function Dashboard() {
                           className="text-xs"
                           onClick={(e) => {
                             e.stopPropagation();
-                            openTrade(ticker);
+                            openToken(ticker);
                           }}
                           data-testid={`button-trade-${ticker.symbol}`}
                         >
@@ -227,12 +223,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <TradeDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        symbol={tradeSymbol}
-        currentPrice={tradePrice}
-      />
     </LayoutShell>
   );
 }
