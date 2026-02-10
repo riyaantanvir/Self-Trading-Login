@@ -6,13 +6,16 @@ import { useAuth } from "@/hooks/use-auth";
 import { LayoutShell } from "@/components/layout-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Loader2,
   Search,
   Eye,
   EyeOff,
   ArrowLeftRight,
+  X,
 } from "lucide-react";
 
 const COIN_NAMES: Record<string, string> = {
@@ -475,6 +478,27 @@ function FuturesAssetsContent({
   formatAmount: (val: number, decimals?: number) => string;
   navigate: (path: string) => void;
 }) {
+  const { toast } = useToast();
+  const [closingId, setClosingId] = useState<number | null>(null);
+
+  const closePositionMutation = useMutation({
+    mutationFn: async (positionId: number) => {
+      const res = await apiRequest("POST", "/api/futures/positions/close", { positionId });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Position closed successfully" });
+      queryClient.invalidateQueries({ queryKey: ["/api/futures/positions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/futures/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      setClosingId(null);
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to close position", description: error.message, variant: "destructive" });
+      setClosingId(null);
+    },
+  });
+
   const openPositions = futuresPositions.filter((p: any) => p.status === "open");
 
   const unrealizedPnl = openPositions.reduce((sum: number, pos: any) => {
@@ -611,16 +635,32 @@ function FuturesAssetsContent({
                       </div>
                     </div>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className={`font-mono font-semibold ${pnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`} data-testid={`text-futures-pnl-${pos.id}`}>
-                      {pnl >= 0 ? "+" : ""}{pnl.toFixed(2)} USDT
+                  <div className="flex items-center gap-3">
+                    <div className="text-right flex-shrink-0">
+                      <div className={`font-mono font-semibold ${pnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`} data-testid={`text-futures-pnl-${pos.id}`}>
+                        {pnl >= 0 ? "+" : ""}{pnl.toFixed(2)} USDT
+                      </div>
+                      <div className={`text-xs font-mono ${roe >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+                        ROE {roe >= 0 ? "+" : ""}{roe.toFixed(2)}%
+                      </div>
+                      <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                        Margin: {margin.toFixed(2)}
+                      </div>
                     </div>
-                    <div className={`text-xs font-mono ${roe >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
-                      ROE {roe >= 0 ? "+" : ""}{roe.toFixed(2)}%
-                    </div>
-                    <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
-                      Margin: {margin.toFixed(2)}
-                    </div>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={closingId === pos.id || closePositionMutation.isPending}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setClosingId(pos.id);
+                        closePositionMutation.mutate(pos.id);
+                      }}
+                      data-testid={`button-close-position-${pos.id}`}
+                    >
+                      {closingId === pos.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                      <span className="ml-1">Close</span>
+                    </Button>
                   </div>
                 </div>
               </div>
