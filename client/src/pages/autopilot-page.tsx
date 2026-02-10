@@ -616,6 +616,25 @@ function DcaBotDashboard({ bot, onBack }: { bot: AutopilotBot; onBack: () => voi
 
   const supportBroken = config?.riskControl?.supportBreakStop && config.supportPrice > 0 && currentPrice < config.supportPrice;
 
+  const dashboardToggleMutation = useMutation({
+    mutationFn: async (isActive: boolean) => {
+      await apiRequest("POST", `/api/autopilot/bots/${bot.id}/toggle`, { isActive });
+    },
+    onSuccess: (_, isActive) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/autopilot/bots"] });
+      if (isActive) {
+        toast({ title: "Bot Started", description: "Auto-execution is now active. First buy will execute shortly." });
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/dca/bots", bot.id, "orders"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/autopilot/bots"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+        }, 2000);
+      } else {
+        toast({ title: "Bot Stopped", description: "Auto-execution paused." });
+      }
+    },
+  });
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -638,6 +657,23 @@ function DcaBotDashboard({ bot, onBack }: { bot: AutopilotBot; onBack: () => voi
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={bot.isActive ? "destructive" : "default"}
+            size="sm"
+            className={!bot.isActive ? "bg-[#0ecb81] text-white" : ""}
+            onClick={() => dashboardToggleMutation.mutate(!bot.isActive)}
+            disabled={dashboardToggleMutation.isPending}
+            data-testid="button-start-stop-bot"
+          >
+            {dashboardToggleMutation.isPending ? (
+              <RefreshCw className="w-4 h-4 animate-spin mr-1" />
+            ) : bot.isActive ? (
+              <AlertTriangle className="w-4 h-4 mr-1" />
+            ) : (
+              <Zap className="w-4 h-4 mr-1" />
+            )}
+            {bot.isActive ? "Stop Bot" : "Start Bot"}
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => resetMutation.mutate()} disabled={resetMutation.isPending} data-testid="button-reset-bot">
             <RefreshCw className="w-4 h-4" />
           </Button>
@@ -905,8 +941,18 @@ function BotCard({ bot, onSelect }: { bot: AutopilotBot; onSelect: (bot: Autopil
     mutationFn: async (isActive: boolean) => {
       await apiRequest("POST", `/api/autopilot/bots/${bot.id}/toggle`, { isActive });
     },
-    onSuccess: () => {
+    onSuccess: (_, isActive) => {
       queryClient.invalidateQueries({ queryKey: ["/api/autopilot/bots"] });
+      if (isActive) {
+        toast({ title: "Bot Activated", description: "Bot is now running. First buy will execute automatically." });
+        setTimeout(() => {
+          queryClient.invalidateQueries({ queryKey: ["/api/dca/bots", bot.id, "orders"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/autopilot/bots"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+        }, 2000);
+      } else {
+        toast({ title: "Bot Stopped", description: "Auto-execution paused." });
+      }
     },
   });
 
