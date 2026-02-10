@@ -82,6 +82,55 @@ export const insertApiKeySchema = createInsertSchema(apiKeys).omit({ id: true })
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
 
+export const futuresWallet = pgTable("futures_wallet", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().unique(),
+  balance: doublePrecision("balance").default(0).notNull(),
+});
+
+export const futuresPositions = pgTable("futures_positions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  symbol: text("symbol").notNull(),
+  side: text("side").notNull(),
+  entryPrice: doublePrecision("entry_price").notNull(),
+  quantity: doublePrecision("quantity").notNull(),
+  leverage: integer("leverage").notNull().default(1),
+  marginMode: text("margin_mode").notNull().default("cross"),
+  isolatedMargin: doublePrecision("isolated_margin").default(0).notNull(),
+  liquidationPrice: doublePrecision("liquidation_price").default(0).notNull(),
+  status: text("status").default("open").notNull(),
+  openedAt: timestamp("opened_at").defaultNow(),
+  closedAt: timestamp("closed_at"),
+});
+
+export const futuresTrades = pgTable("futures_trades", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  symbol: text("symbol").notNull(),
+  side: text("side").notNull(),
+  action: text("action").notNull(),
+  quantity: doublePrecision("quantity").notNull(),
+  price: doublePrecision("price").notNull(),
+  leverage: integer("leverage").notNull().default(1),
+  marginMode: text("margin_mode").notNull().default("cross"),
+  realizedPnl: doublePrecision("realized_pnl").default(0).notNull(),
+  fee: doublePrecision("fee").default(0).notNull(),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+export const insertFuturesWalletSchema = createInsertSchema(futuresWallet).omit({ id: true });
+export type FuturesWallet = typeof futuresWallet.$inferSelect;
+export type InsertFuturesWallet = z.infer<typeof insertFuturesWalletSchema>;
+
+export const insertFuturesPositionSchema = createInsertSchema(futuresPositions).omit({ id: true, openedAt: true, closedAt: true });
+export type FuturesPosition = typeof futuresPositions.$inferSelect;
+export type InsertFuturesPosition = z.infer<typeof insertFuturesPositionSchema>;
+
+export const insertFuturesTradeSchema = createInsertSchema(futuresTrades).omit({ id: true, timestamp: true });
+export type FuturesTrade = typeof futuresTrades.$inferSelect;
+export type InsertFuturesTrade = z.infer<typeof insertFuturesTradeSchema>;
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertTradeSchema = createInsertSchema(trades).omit({ id: true, userId: true, timestamp: true, total: true });
 export const insertPortfolioSchema = createInsertSchema(portfolio).omit({ id: true });

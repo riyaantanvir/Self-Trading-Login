@@ -6,11 +6,13 @@ import { useAuth } from "@/hooks/use-auth";
 import { LayoutShell } from "@/components/layout-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useQuery } from "@tanstack/react-query";
 import {
   Loader2,
   Search,
   Eye,
   EyeOff,
+  ArrowLeftRight,
 } from "lucide-react";
 
 const COIN_NAMES: Record<string, string> = {
@@ -90,6 +92,19 @@ export default function AssetsPage() {
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [search, setSearch] = useState("");
   const [, navigate] = useLocation();
+  const [activeTab, setActiveTab] = useState<"overview" | "futures">("overview");
+
+  const { data: futuresWalletData } = useQuery({
+    queryKey: ["/api/futures/wallet"],
+    enabled: activeTab === "futures",
+  });
+  const { data: futuresPositionsData } = useQuery({
+    queryKey: ["/api/futures/positions"],
+    enabled: activeTab === "futures",
+  });
+
+  const futuresBalance = (futuresWalletData as any)?.balance ?? 0;
+  const futuresPositions = (futuresPositionsData as any[]) ?? [];
 
   const tickerMap = useMemo(() => {
     const map: Record<string, Ticker> = {};
@@ -184,10 +199,18 @@ export default function AssetsPage() {
       <div className="p-4 md:p-6 max-w-3xl mx-auto">
         <div className="flex items-center gap-4 mb-6 border-b border-border pb-3 overflow-x-auto">
           <button
-            className="text-base font-semibold text-foreground border-b-2 border-[#0ecb81] pb-2 whitespace-nowrap"
+            className={`text-base font-semibold pb-2 whitespace-nowrap ${activeTab === "overview" ? "text-foreground border-b-2 border-[#0ecb81]" : "text-muted-foreground"}`}
+            onClick={() => setActiveTab("overview")}
             data-testid="tab-overview"
           >
             Overview
+          </button>
+          <button
+            className={`text-base font-semibold pb-2 whitespace-nowrap ${activeTab === "futures" ? "text-foreground border-b-2 border-[#f0b90b]" : "text-muted-foreground"}`}
+            onClick={() => setActiveTab("futures")}
+            data-testid="tab-futures"
+          >
+            Futures
           </button>
           <button
             className="text-base text-muted-foreground pb-2 whitespace-nowrap cursor-not-allowed opacity-50"
@@ -199,26 +222,25 @@ export default function AssetsPage() {
           <button
             className="text-base text-muted-foreground pb-2 whitespace-nowrap cursor-not-allowed opacity-50"
             disabled
-            data-testid="tab-funding"
-          >
-            Funding
-          </button>
-          <button
-            className="text-base text-muted-foreground pb-2 whitespace-nowrap cursor-not-allowed opacity-50"
-            disabled
-            data-testid="tab-futures"
-          >
-            Futures
-          </button>
-          <button
-            className="text-base text-muted-foreground pb-2 whitespace-nowrap cursor-not-allowed opacity-50"
-            disabled
             data-testid="tab-earn"
           >
             Earn
           </button>
         </div>
 
+        {activeTab === "futures" ? (
+          <FuturesAssetsContent
+            futuresBalance={futuresBalance}
+            futuresPositions={futuresPositions}
+            tickers={tickers}
+            tickerMap={tickerMap}
+            balanceVisible={balanceVisible}
+            setBalanceVisible={setBalanceVisible}
+            formatAmount={formatAmount}
+            navigate={navigate}
+          />
+        ) : (
+        <>
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-sm text-muted-foreground">Est. Total Value</span>
@@ -427,7 +449,179 @@ export default function AssetsPage() {
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
     </LayoutShell>
+  );
+}
+
+function FuturesAssetsContent({
+  futuresBalance,
+  futuresPositions,
+  tickers,
+  tickerMap,
+  balanceVisible,
+  setBalanceVisible,
+  formatAmount,
+  navigate,
+}: {
+  futuresBalance: number;
+  futuresPositions: any[];
+  tickers: any;
+  tickerMap: Record<string, Ticker>;
+  balanceVisible: boolean;
+  setBalanceVisible: (v: boolean) => void;
+  formatAmount: (val: number, decimals?: number) => string;
+  navigate: (path: string) => void;
+}) {
+  const openPositions = futuresPositions.filter((p: any) => p.status === "open");
+
+  const unrealizedPnl = openPositions.reduce((sum: number, pos: any) => {
+    const ticker = tickerMap[pos.symbol];
+    const currentPrice = ticker ? parseFloat(ticker.lastPrice) : Number(pos.entryPrice);
+    const qty = Number(pos.quantity);
+    const entry = Number(pos.entryPrice);
+    const pnl = pos.side === "long"
+      ? (currentPrice - entry) * qty
+      : (entry - currentPrice) * qty;
+    return sum + pnl;
+  }, 0);
+
+  const totalMargin = openPositions.reduce((sum: number, pos: any) => sum + (Number(pos.isolatedMargin) || (Number(pos.entryPrice) * Number(pos.quantity) / Number(pos.leverage))), 0);
+  const totalFuturesValue = futuresBalance + unrealizedPnl;
+
+  return (
+    <>
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-sm text-muted-foreground">Futures Account</span>
+          <button
+            onClick={() => setBalanceVisible(!balanceVisible)}
+            className="text-muted-foreground"
+            data-testid="button-toggle-futures-balance"
+          >
+            {balanceVisible ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+          </button>
+        </div>
+        <div className="flex items-baseline gap-2 mb-1 flex-wrap">
+          <span className="text-2xl sm:text-3xl font-bold text-foreground font-mono" data-testid="text-futures-total">
+            {balanceVisible ? formatAmount(totalFuturesValue) : "****"}
+          </span>
+          <span className="text-base sm:text-lg text-muted-foreground">USDT</span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
+          <div className="rounded-md border border-border bg-card p-3">
+            <div className="text-[10px] text-muted-foreground mb-0.5">Available Balance</div>
+            <div className="font-mono text-sm font-semibold text-foreground" data-testid="text-futures-available">
+              {balanceVisible ? formatAmount(futuresBalance) : "****"} USDT
+            </div>
+          </div>
+          <div className="rounded-md border border-border bg-card p-3">
+            <div className="text-[10px] text-muted-foreground mb-0.5">Unrealized PnL</div>
+            <div className={`font-mono text-sm font-semibold ${unrealizedPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`} data-testid="text-futures-upnl">
+              {balanceVisible ? `${unrealizedPnl >= 0 ? "+" : ""}${formatAmount(unrealizedPnl)}` : "****"} USDT
+            </div>
+          </div>
+          <div className="rounded-md border border-border bg-card p-3">
+            <div className="text-[10px] text-muted-foreground mb-0.5">Margin In Use</div>
+            <div className="font-mono text-sm font-semibold text-[#f0b90b]" data-testid="text-futures-margin">
+              {balanceVisible ? formatAmount(totalMargin) : "****"} USDT
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-3 mb-8">
+        <Button
+          variant="default"
+          className="bg-[#f0b90b] text-black font-semibold border-[#f0b90b]"
+          onClick={() => navigate("/")}
+          data-testid="button-futures-trade"
+        >
+          Trade Futures
+        </Button>
+        <Button
+          variant="outline"
+          onClick={() => navigate("/history")}
+          data-testid="button-futures-history"
+        >
+          <ArrowLeftRight className="w-4 h-4 mr-1" />
+          History
+        </Button>
+      </div>
+
+      <div className="mb-4">
+        <div className="text-sm font-semibold text-foreground mb-3 border-b-2 border-[#f0b90b] pb-1 inline-block">
+          Open Positions ({openPositions.length})
+        </div>
+
+        {openPositions.length === 0 ? (
+          <div className="text-center text-muted-foreground py-8 text-sm">
+            No open futures positions. Switch to Futures mode on any coin's trading page to open a position.
+          </div>
+        ) : (
+          openPositions.map((pos: any) => {
+            const coinName = pos.symbol.replace("USDT", "");
+            const ticker = tickerMap[pos.symbol];
+            const currentPrice = ticker ? parseFloat(ticker.lastPrice) : Number(pos.entryPrice);
+            const qty = Number(pos.quantity);
+            const entry = Number(pos.entryPrice);
+            const margin = Number(pos.isolatedMargin) || (entry * qty / Number(pos.leverage));
+            const pnl = pos.side === "long"
+              ? (currentPrice - entry) * qty
+              : (entry - currentPrice) * qty;
+            const roe = margin > 0 ? (pnl / margin) * 100 : 0;
+            const colorClass = COIN_COLORS[coinName] || "bg-muted";
+
+            return (
+              <div
+                key={pos.id}
+                className="rounded-md border border-border bg-card p-4 mb-3 hover-elevate cursor-pointer"
+                onClick={() => navigate(`/trade/${pos.symbol.toLowerCase()}`)}
+                data-testid={`card-futures-position-${pos.id}`}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-9 h-9 rounded-full ${colorClass} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
+                      {coinName.charAt(0)}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-foreground">{coinName}/USDT</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${pos.side === "long" ? "bg-[#0ecb81]/20 text-[#0ecb81]" : "bg-[#f6465d]/20 text-[#f6465d]"}`}>
+                          {pos.side.toUpperCase()} {pos.leverage}x
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">{pos.marginMode}</span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-[10px]">
+                        <span className="text-muted-foreground">Entry: <span className="text-foreground font-mono">${Number(entry).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+                        <span className="text-muted-foreground">Mark: <span className="text-foreground font-mono">${currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-0.5 text-[10px]">
+                        <span className="text-muted-foreground">Liq: <span className="text-[#f6465d] font-mono">${Number(pos.liquidationPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></span>
+                        <span className="text-muted-foreground">Size: <span className="font-mono text-foreground">{qty.toFixed(6)} {coinName}</span></span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className={`font-mono font-semibold ${pnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`} data-testid={`text-futures-pnl-${pos.id}`}>
+                      {pnl >= 0 ? "+" : ""}{pnl.toFixed(2)} USDT
+                    </div>
+                    <div className={`text-xs font-mono ${roe >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+                      ROE {roe >= 0 ? "+" : ""}{roe.toFixed(2)}%
+                    </div>
+                    <div className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                      Margin: {margin.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </>
   );
 }

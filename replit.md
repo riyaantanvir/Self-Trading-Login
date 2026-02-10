@@ -22,8 +22,8 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 ## Key Routes
 - `/auth` - Login page
 - `/` - Market overview (Binance-style coin table with live prices)
-- `/trade/:symbol` - Token detail page (candlestick chart, order book, trade panel)
-- `/assets` - Assets overview (Binance-style, total value, today's PNL clickable, holdings list)
+- `/trade/:symbol` - Token detail page (candlestick chart, order book, trade panel, Spot/Futures mode toggle)
+- `/assets` - Assets overview (Binance-style, total value, today's PNL clickable, holdings list, Futures tab with positions)
 - `/pnl` - PNL analysis page (daily calendar, charts, 7D/30D/90D periods, cumulative PNL)
 - `/portfolio` - Holdings, P&L, and quick sell
 - `/history` - Trade history
@@ -68,6 +68,14 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `POST /api/user/signal-alerts` - Enable/disable smart signal alerts (body: { enabled })
 - `POST /api/user/telegram` - Save Telegram bot token and chat ID
 - `POST /api/user/telegram/test` - Send test Telegram message
+- `GET /api/futures/wallet` - Futures wallet balance
+- `POST /api/futures/wallet/transfer` - Transfer between spot and futures wallets (body: { amount, direction: "spot_to_futures" | "futures_to_spot" })
+- `GET /api/futures/positions` - Open futures positions for current user
+- `GET /api/futures/positions/all` - All futures positions (including closed)
+- `POST /api/futures/positions/open` - Open futures position (body: { symbol, side, quantity, leverage, marginMode, price })
+- `POST /api/futures/positions/close` - Close futures position (body: { positionId, quantity? })
+- `GET /api/futures/trades` - Futures trade history
+- `POST /api/admin/futures-topup` - Admin top-up futures wallet
 - `GET /api/admin/api-keys` - Get all API keys (masked, admin-only)
 - `POST /api/admin/api-keys` - Save/update API key (body: { keyName, apiKey, apiSecret }, admin-only)
 
@@ -89,7 +97,19 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Pending orders checked every 3s against live ticker prices; balance/holdings reserved on placement
 - Cancel returns reserved balance (buy) or holdings (sell)
 
+## Futures Trading
+- Separate futures wallet with transfer between spot and futures balances
+- Leverage: 1x to 125x (1x, 2x, 3x, 5x, 10x, 20x, 50x, 75x, 100x, 125x)
+- Margin modes: Cross (shared wallet balance) and Isolated (per-position margin)
+- Long/Short positions with entry price, liquidation price, unrealized PnL, ROE%
+- Fees: 0.04% taker fee, 1% maintenance margin for liquidation calculation
+- Minimum position size: 5 USDT
+- DB tables: futures_wallet, futures_positions, futures_trades
+- FuturesTradePanel component on token detail page (Spot/Futures toggle in header)
+- Futures tab on Assets page shows wallet balance, unrealized PnL, margin in use, open positions
+
 ## Recent Changes
+- Feb 2026: Added Futures Trading mode - full Binance-style futures with leverage (1x-125x), long/short positions, cross/isolated margin, separate futures wallet, Spot/Futures toggle on trading page, Futures tab on Assets page
 - Feb 2026: Added API Key Management in Admin Panel - admin can save/update Binance Spot and Futures API keys; keys stored in DB (api_keys table), masked display, show/hide toggle
 - Feb 2026: Added Coin Management in Admin Panel - admin can add/remove any Binance coin from tracked list; DB-driven coin list (tracked_coins table), WebSocket auto-reconnects when list changes
 - Feb 2026: Added Settings page (/settings) - moved logout from header, admin panel link for admins

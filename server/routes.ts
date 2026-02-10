@@ -2364,6 +2364,285 @@ export async function registerRoutes(
     }
   });
 
+  // ---- Futures Trading Endpoints ----
+
+  app.get("/api/futures/wallet", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    try {
+      let wallet = await storage.getFuturesWallet(user.id);
+      if (!wallet) {
+        wallet = await storage.createFuturesWallet(user.id, 0);
+      }
+      res.json(wallet);
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/futures/wallet/transfer", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    try {
+      const { amount, direction } = z.object({
+        amount: z.number().positive(),
+        direction: z.enum(["spot_to_futures", "futures_to_spot"]),
+      }).parse(req.body);
+
+      const currentUser = await storage.getUser(user.id);
+      if (!currentUser) return res.status(404).json({ message: "User not found" });
+
+      let wallet = await storage.getFuturesWallet(user.id);
+      if (!wallet) {
+        wallet = await storage.createFuturesWallet(user.id, 0);
+      }
+
+      if (direction === "spot_to_futures") {
+        if (currentUser.balance < amount) {
+          return res.status(400).json({ message: "Insufficient spot balance" });
+        }
+        await storage.updateUserBalance(user.id, currentUser.balance - amount);
+        await storage.updateFuturesWalletBalance(user.id, wallet.balance + amount);
+      } else {
+        if (wallet.balance < amount) {
+          return res.status(400).json({ message: "Insufficient futures balance" });
+        }
+        await storage.updateFuturesWalletBalance(user.id, wallet.balance - amount);
+        await storage.updateUserBalance(user.id, currentUser.balance + amount);
+      }
+
+      const updatedWallet = await storage.getFuturesWallet(user.id);
+      const updatedUser = await storage.getUser(user.id);
+      res.json({ futuresBalance: updatedWallet?.balance || 0, spotBalance: updatedUser?.balance || 0 });
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/futures/positions", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    try {
+      const positions = await storage.getOpenFuturesPositions(user.id);
+      const withPnl = positions.map(pos => {
+        const ticker = tickerMap.get(pos.symbol.toUpperCase());
+        const currentPrice = ticker ? parseFloat(ticker.lastPrice) : pos.entryPrice;
+        const notional = pos.quantity * currentPrice;
+        let unrealizedPnl = 0;
+        if (pos.side === "long") {
+          unrealizedPnl = (currentPrice - pos.entryPrice) * pos.quantity;
+        } else {
+          unrealizedPnl = (pos.entryPrice - currentPrice) * pos.quantity;
+        }
+        const roe = pos.isolatedMargin > 0 ? (unrealizedPnl / pos.isolatedMargin) * 100 : 0;
+        return { ...pos, currentPrice, notional, unrealizedPnl, roe };
+      });
+      res.json(withPnl);
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/futures/positions/all", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    try {
+      const positions = await storage.getFuturesPositions(user.id);
+      res.json(positions);
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/futures/positions/open", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    try {
+      const schema = z.object({
+        symbol: z.string().min(1),
+        side: z.enum(["long", "short"]),
+        quantity: z.number().positive(),
+        leverage: z.number().int().min(1).max(125),
+        marginMode: z.enum(["cross", "isolated"]).default("cross"),
+      });
+      const { symbol, side, quantity, leverage, marginMode } = schema.parse(req.body);
+
+      const sym = symbol.toUpperCase();
+      const ticker = tickerMap.get(sym);
+      if (!ticker) return res.status(400).json({ message: `No price data for ${sym}` });
+
+      const currentPrice = parseFloat(ticker.lastPrice);
+      const notional = quantity * currentPrice;
+      const margin = notional / leverage;
+      const fee = notional * 0.0004; // 0.04% taker fee
+      const totalCost = margin + fee;
+
+      let wallet = await storage.getFuturesWallet(user.id);
+      if (!wallet) {
+        wallet = await storage.createFuturesWallet(user.id, 0);
+      }
+
+      if (wallet.balance < totalCost) {
+        return res.status(400).json({ message: `Insufficient futures balance. Required: ${totalCost.toFixed(2)} USDT, Available: ${wallet.balance.toFixed(2)} USDT` });
+      }
+
+      if (notional < 5) {
+        return res.status(400).json({ message: "Minimum position size is 5 USDT" });
+      }
+
+      // Calculate liquidation price (simplified with 1% maintenance margin)
+      const maintenanceMarginRate = 0.01;
+      let liquidationPrice = 0;
+      if (side === "long") {
+        liquidationPrice = currentPrice * (1 - (1 / leverage) + maintenanceMarginRate);
+      } else {
+        liquidationPrice = currentPrice * (1 + (1 / leverage) - maintenanceMarginRate);
+      }
+
+      // Deduct margin + fee from wallet
+      await storage.updateFuturesWalletBalance(user.id, wallet.balance - totalCost);
+
+      // Create position
+      const position = await storage.createFuturesPosition({
+        userId: user.id,
+        symbol: sym,
+        side,
+        entryPrice: currentPrice,
+        quantity,
+        leverage,
+        marginMode,
+        isolatedMargin: margin,
+        liquidationPrice: Math.max(0, liquidationPrice),
+      });
+
+      // Record trade
+      await storage.createFuturesTrade({
+        userId: user.id,
+        symbol: sym,
+        side,
+        action: "open",
+        quantity,
+        price: currentPrice,
+        leverage,
+        marginMode,
+        realizedPnl: 0,
+        fee,
+      });
+
+      res.json({ position, fee, margin, notional });
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      console.error("[Futures] Open error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/futures/positions/close", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    try {
+      const { positionId, quantity } = z.object({
+        positionId: z.number().int(),
+        quantity: z.number().positive().optional(),
+      }).parse(req.body);
+
+      const position = await storage.getFuturesPosition(positionId);
+      if (!position || position.userId !== user.id) {
+        return res.status(404).json({ message: "Position not found" });
+      }
+      if (position.status !== "open") {
+        return res.status(400).json({ message: "Position is already closed" });
+      }
+
+      const ticker = tickerMap.get(position.symbol.toUpperCase());
+      if (!ticker) return res.status(400).json({ message: "No price data" });
+
+      const closePrice = parseFloat(ticker.lastPrice);
+      const closeQty = quantity ? Math.min(quantity, position.quantity) : position.quantity;
+      const closingNotional = closeQty * closePrice;
+      const fee = closingNotional * 0.0004;
+
+      let pnl = 0;
+      if (position.side === "long") {
+        pnl = (closePrice - position.entryPrice) * closeQty;
+      } else {
+        pnl = (position.entryPrice - closePrice) * closeQty;
+      }
+
+      const marginReturned = (closeQty / position.quantity) * position.isolatedMargin;
+      const netReturn = marginReturned + pnl - fee;
+
+      let wallet = await storage.getFuturesWallet(user.id);
+      if (!wallet) wallet = await storage.createFuturesWallet(user.id, 0);
+
+      await storage.updateFuturesWalletBalance(user.id, wallet.balance + netReturn);
+
+      if (closeQty >= position.quantity) {
+        await storage.closeFuturesPosition(positionId);
+      } else {
+        const remainingQty = position.quantity - closeQty;
+        const remainingMargin = position.isolatedMargin - marginReturned;
+        await storage.updateFuturesPositionQuantity(positionId, remainingQty, position.entryPrice);
+      }
+
+      await storage.createFuturesTrade({
+        userId: user.id,
+        symbol: position.symbol,
+        side: position.side,
+        action: "close",
+        quantity: closeQty,
+        price: closePrice,
+        leverage: position.leverage,
+        marginMode: position.marginMode,
+        realizedPnl: pnl,
+        fee,
+      });
+
+      res.json({ pnl, fee, closePrice, closeQty, netReturn });
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      console.error("[Futures] Close error:", e);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/futures/trades", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    try {
+      const trades = await storage.getFuturesTrades(user.id);
+      res.json(trades);
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Admin: top up futures wallet
+  app.post("/api/admin/futures-topup", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const adminUser = req.user as any;
+    if (!adminUser.isAdmin) return res.status(403).json({ message: "Admin access required" });
+    try {
+      const { userId, amount } = z.object({
+        userId: z.number().int(),
+        amount: z.number().positive(),
+      }).parse(req.body);
+
+      let wallet = await storage.getFuturesWallet(userId);
+      if (!wallet) {
+        wallet = await storage.createFuturesWallet(userId, amount);
+      } else {
+        await storage.updateFuturesWalletBalance(userId, wallet.balance + amount);
+      }
+      const updated = await storage.getFuturesWallet(userId);
+      res.json({ userId, newBalance: updated?.balance || 0 });
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   const coinAnalysisCache: { [key: string]: { data: any; timestamp: number } } = {};
   app.get("/api/market/coin-analysis/:symbol", async (req, res) => {
     try {

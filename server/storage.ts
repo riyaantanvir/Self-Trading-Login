@@ -1,4 +1,4 @@
-import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, apiKeys, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin, type ApiKey } from "@shared/schema";
+import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, apiKeys, futuresWallet, futuresPositions, futuresTrades, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin, type ApiKey, type FuturesWallet, type FuturesPosition, type FuturesTrade } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lt } from "drizzle-orm";
 
@@ -37,6 +37,20 @@ export interface IStorage {
   getApiKey(keyName: string): Promise<ApiKey | undefined>;
   getAllApiKeys(): Promise<ApiKey[]>;
   upsertApiKey(keyName: string, apiKeyVal: string, apiSecret: string): Promise<ApiKey>;
+
+  getFuturesWallet(userId: number): Promise<FuturesWallet | undefined>;
+  createFuturesWallet(userId: number, balance: number): Promise<FuturesWallet>;
+  updateFuturesWalletBalance(userId: number, balance: number): Promise<void>;
+
+  getFuturesPositions(userId: number): Promise<FuturesPosition[]>;
+  getOpenFuturesPositions(userId: number): Promise<FuturesPosition[]>;
+  getFuturesPosition(id: number): Promise<FuturesPosition | undefined>;
+  createFuturesPosition(data: { userId: number; symbol: string; side: string; entryPrice: number; quantity: number; leverage: number; marginMode: string; isolatedMargin: number; liquidationPrice: number }): Promise<FuturesPosition>;
+  closeFuturesPosition(id: number): Promise<void>;
+  updateFuturesPositionQuantity(id: number, quantity: number, entryPrice: number): Promise<void>;
+
+  getFuturesTrades(userId: number): Promise<FuturesTrade[]>;
+  createFuturesTrade(data: { userId: number; symbol: string; side: string; action: string; quantity: number; price: number; leverage: number; marginMode: string; realizedPnl: number; fee: number }): Promise<FuturesTrade>;
 
   getPriceAlerts(userId: number): Promise<PriceAlert[]>;
   getActivePriceAlerts(): Promise<PriceAlert[]>;
@@ -241,6 +255,73 @@ export class DatabaseStorage implements IStorage {
       .values({ keyName, apiKey: apiKeyVal, apiSecret: apiSecret })
       .returning();
     return created;
+  }
+
+  async getFuturesWallet(userId: number): Promise<FuturesWallet | undefined> {
+    const [wallet] = await db.select().from(futuresWallet).where(eq(futuresWallet.userId, userId));
+    return wallet;
+  }
+
+  async createFuturesWallet(userId: number, balance: number): Promise<FuturesWallet> {
+    const existing = await this.getFuturesWallet(userId);
+    if (existing) {
+      await db.update(futuresWallet).set({ balance }).where(eq(futuresWallet.userId, userId));
+      return { ...existing, balance };
+    }
+    const [wallet] = await db.insert(futuresWallet).values({ userId, balance }).returning();
+    return wallet;
+  }
+
+  async updateFuturesWalletBalance(userId: number, balance: number): Promise<void> {
+    await db.update(futuresWallet).set({ balance }).where(eq(futuresWallet.userId, userId));
+  }
+
+  async getFuturesPositions(userId: number): Promise<FuturesPosition[]> {
+    return await db.select().from(futuresPositions).where(eq(futuresPositions.userId, userId));
+  }
+
+  async getOpenFuturesPositions(userId: number): Promise<FuturesPosition[]> {
+    return await db.select().from(futuresPositions).where(
+      and(eq(futuresPositions.userId, userId), eq(futuresPositions.status, "open"))
+    );
+  }
+
+  async getFuturesPosition(id: number): Promise<FuturesPosition | undefined> {
+    const [pos] = await db.select().from(futuresPositions).where(eq(futuresPositions.id, id));
+    return pos;
+  }
+
+  async createFuturesPosition(data: { userId: number; symbol: string; side: string; entryPrice: number; quantity: number; leverage: number; marginMode: string; isolatedMargin: number; liquidationPrice: number }): Promise<FuturesPosition> {
+    const [pos] = await db.insert(futuresPositions).values({
+      userId: data.userId,
+      symbol: data.symbol,
+      side: data.side,
+      entryPrice: data.entryPrice,
+      quantity: data.quantity,
+      leverage: data.leverage,
+      marginMode: data.marginMode,
+      isolatedMargin: data.isolatedMargin,
+      liquidationPrice: data.liquidationPrice,
+      status: "open",
+    }).returning();
+    return pos;
+  }
+
+  async closeFuturesPosition(id: number): Promise<void> {
+    await db.update(futuresPositions).set({ status: "closed", closedAt: new Date() }).where(eq(futuresPositions.id, id));
+  }
+
+  async updateFuturesPositionQuantity(id: number, quantity: number, entryPrice: number): Promise<void> {
+    await db.update(futuresPositions).set({ quantity, entryPrice }).where(eq(futuresPositions.id, id));
+  }
+
+  async getFuturesTrades(userId: number): Promise<FuturesTrade[]> {
+    return await db.select().from(futuresTrades).where(eq(futuresTrades.userId, userId));
+  }
+
+  async createFuturesTrade(data: { userId: number; symbol: string; side: string; action: string; quantity: number; price: number; leverage: number; marginMode: string; realizedPnl: number; fee: number }): Promise<FuturesTrade> {
+    const [trade] = await db.insert(futuresTrades).values(data).returning();
+    return trade;
   }
 }
 

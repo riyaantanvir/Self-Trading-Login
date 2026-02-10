@@ -31,6 +31,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { QuickAnalysisSheet } from "@/components/quick-analysis";
+import { FuturesTradePanel } from "@/components/futures-trade-panel";
 
 interface KlineData {
   time: number;
@@ -1051,11 +1052,15 @@ export default function TokenDetail() {
   const allPendingOrders = (pendingData as any[] || []);
   const symbolPendingOrders = allPendingOrders.filter((o: any) => o.symbol === symbol);
 
+  const [tradingMode, setTradingMode] = useState<"spot" | "futures">(() => {
+    try { return (localStorage.getItem("trading_mode") as "spot" | "futures") || "spot"; } catch { return "spot"; }
+  });
   const [showBollinger, setShowBollinger] = useState(false);
   const [showRSI, setShowRSI] = useState(false);
   const [showMACD, setShowMACD] = useState(false);
   const [isBuySheetOpen, setIsBuySheetOpen] = useState(false);
   const [isSellSheetOpen, setIsSellSheetOpen] = useState(false);
+  const [isFuturesSheetOpen, setIsFuturesSheetOpen] = useState(false);
   const [isAlertSheetOpen, setIsAlertSheetOpen] = useState(false);
   const [alertTab, setAlertTab] = useState<"price" | "indicator">("price");
   const [alertPrice, setAlertPrice] = useState("");
@@ -1092,6 +1097,23 @@ export default function TokenDetail() {
             </Link>
 
             <span className="text-sm sm:text-lg font-bold text-foreground flex-shrink-0" data-testid="text-symbol">{coinName}/USDT</span>
+
+            <div className="flex items-center gap-0.5 bg-muted rounded-md p-0.5 flex-shrink-0" data-testid="toggle-trading-mode">
+              <button
+                className={`text-[10px] sm:text-xs font-medium px-2 py-0.5 rounded-sm transition-colors ${tradingMode === "spot" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+                onClick={() => { setTradingMode("spot"); try { localStorage.setItem("trading_mode", "spot"); } catch {} }}
+                data-testid="button-mode-spot"
+              >
+                Spot
+              </button>
+              <button
+                className={`text-[10px] sm:text-xs font-medium px-2 py-0.5 rounded-sm transition-colors ${tradingMode === "futures" ? "bg-[#f0b90b] text-black shadow-sm" : "text-muted-foreground"}`}
+                onClick={() => { setTradingMode("futures"); try { localStorage.setItem("trading_mode", "futures"); } catch {} }}
+                data-testid="button-mode-futures"
+              >
+                Futures
+              </button>
+            </div>
 
             <span
               className={`text-sm sm:text-xl font-bold font-mono transition-colors duration-300 truncate ${
@@ -1249,7 +1271,11 @@ export default function TokenDetail() {
 
           <div className="hidden md:flex flex-col w-64 border-l border-border">
             <div className="flex-1 overflow-y-auto border-b border-border">
-              <TradePanel symbol={symbol} currentPrice={currentPrice} />
+              {tradingMode === "futures" ? (
+                <FuturesTradePanel symbol={symbol} currentPrice={currentPrice} />
+              ) : (
+                <TradePanel symbol={symbol} currentPrice={currentPrice} />
+              )}
             </div>
             <div className="h-64 overflow-y-auto">
               <MarketTrades price={currentPrice} symbol={symbol} />
@@ -1259,43 +1285,66 @@ export default function TokenDetail() {
 
         {/* Mobile Action Bar */}
         <div className="md:hidden flex gap-2 p-3 bg-background border-t border-border pb-safe">
-          <Sheet open={isBuySheetOpen} onOpenChange={setIsBuySheetOpen}>
-            <SheetTrigger asChild>
-              <Button
-                className="flex-1 bg-[#0ecb81] hover:bg-[#0ecb81]/90 text-white font-bold"
-                data-testid="button-mobile-buy"
-              >
-                Buy {coinName}
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="bottom" className="h-[80vh] px-0 pb-safe">
-              <SheetHeader className="px-4 pb-2 border-b border-border">
-                <SheetTitle>Buy {coinName}</SheetTitle>
-              </SheetHeader>
-              <div className="overflow-y-auto h-full pb-10">
-                <TradePanel symbol={symbol} currentPrice={currentPrice} defaultType="buy" onComplete={() => setIsBuySheetOpen(false)} />
-              </div>
-            </SheetContent>
-          </Sheet>
+          {tradingMode === "futures" ? (
+            <Sheet open={isFuturesSheetOpen} onOpenChange={setIsFuturesSheetOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  className="flex-1 bg-[#f0b90b] text-black font-bold"
+                  data-testid="button-mobile-futures"
+                >
+                  Futures Trade {coinName}
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="bottom" className="h-[85vh] px-0 pb-safe">
+                <SheetHeader className="px-4 pb-2 border-b border-border">
+                  <SheetTitle>Futures - {coinName}/USDT</SheetTitle>
+                </SheetHeader>
+                <div className="overflow-y-auto h-full pb-10">
+                  <FuturesTradePanel symbol={symbol} currentPrice={currentPrice} />
+                </div>
+              </SheetContent>
+            </Sheet>
+          ) : (
+            <>
+              <Sheet open={isBuySheetOpen} onOpenChange={setIsBuySheetOpen}>
+                <SheetTrigger asChild>
+                  <Button
+                    className="flex-1 bg-[#0ecb81] hover:bg-[#0ecb81]/90 text-white font-bold"
+                    data-testid="button-mobile-buy"
+                  >
+                    Buy {coinName}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="h-[80vh] px-0 pb-safe">
+                  <SheetHeader className="px-4 pb-2 border-b border-border">
+                    <SheetTitle>Buy {coinName}</SheetTitle>
+                  </SheetHeader>
+                  <div className="overflow-y-auto h-full pb-10">
+                    <TradePanel symbol={symbol} currentPrice={currentPrice} defaultType="buy" onComplete={() => setIsBuySheetOpen(false)} />
+                  </div>
+                </SheetContent>
+              </Sheet>
 
-          <Sheet open={isSellSheetOpen} onOpenChange={setIsSellSheetOpen}>
-            <SheetTrigger asChild>
-              <Button
-                className="flex-1 bg-[#f6465d] hover:bg-[#f6465d]/90 text-white font-bold"
-                data-testid="button-mobile-sell"
-              >
-                Sell {coinName}
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="bottom" className="h-[80vh] px-0 pb-safe">
-              <SheetHeader className="px-4 pb-2 border-b border-border">
-                <SheetTitle>Sell {coinName}</SheetTitle>
-              </SheetHeader>
-              <div className="overflow-y-auto h-full pb-10">
-                <TradePanel symbol={symbol} currentPrice={currentPrice} defaultType="sell" onComplete={() => setIsSellSheetOpen(false)} />
-              </div>
-            </SheetContent>
-          </Sheet>
+              <Sheet open={isSellSheetOpen} onOpenChange={setIsSellSheetOpen}>
+                <SheetTrigger asChild>
+                  <Button
+                    className="flex-1 bg-[#f6465d] hover:bg-[#f6465d]/90 text-white font-bold"
+                    data-testid="button-mobile-sell"
+                  >
+                    Sell {coinName}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="bottom" className="h-[80vh] px-0 pb-safe">
+                  <SheetHeader className="px-4 pb-2 border-b border-border">
+                    <SheetTitle>Sell {coinName}</SheetTitle>
+                  </SheetHeader>
+                  <div className="overflow-y-auto h-full pb-10">
+                    <TradePanel symbol={symbol} currentPrice={currentPrice} defaultType="sell" onComplete={() => setIsSellSheetOpen(false)} />
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </>
+          )}
         </div>
 
         <Sheet open={isAlertSheetOpen} onOpenChange={setIsAlertSheetOpen}>
