@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Search, TrendingUp, TrendingDown, Minus, Target, Shield, Zap, BarChart3, Activity, Eye, ArrowUp, ArrowDown, Crosshair, Grid3x3 } from "lucide-react";
+import { Loader2, Search, TrendingUp, TrendingDown, Minus, Target, Shield, Zap, BarChart3, Activity, Eye, ArrowUp, ArrowDown, Crosshair, Grid3x3, GitBranch, Layers, BarChart2, Gauge, ArrowLeftRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 
 interface Ticker {
@@ -57,10 +57,15 @@ interface LongShortData {
   marketSentiment: { avgLong: number; avgShort: number; overallRatio: number; bias: string };
 }
 
-type Section = "scanner" | "sr" | "signals" | "correlation" | "whale" | "pulse";
+type Section = "scanner" | "sr" | "signals" | "correlation" | "whale" | "pulse" | "divergence" | "mtf" | "volprofile" | "momentum" | "orderflow";
 
 const sections: { key: Section; label: string; icon: any }[] = [
   { key: "scanner", label: "Scanner", icon: Search },
+  { key: "divergence", label: "Divergence", icon: GitBranch },
+  { key: "mtf", label: "Multi-TF", icon: Layers },
+  { key: "volprofile", label: "Vol Profile", icon: BarChart2 },
+  { key: "momentum", label: "Momentum", icon: Gauge },
+  { key: "orderflow", label: "Order Flow", icon: ArrowLeftRight },
   { key: "sr", label: "S/R Levels", icon: Target },
   { key: "signals", label: "Signals", icon: Zap },
   { key: "correlation", label: "Correlation", icon: Grid3x3 },
@@ -734,9 +739,569 @@ function MarketPulseSection({ tickers }: { tickers: Ticker[] }) {
   );
 }
 
+// --- Divergence Detector Section ---
+interface DivergenceItem {
+  symbol: string;
+  price: number;
+  priceChange24h: number;
+  rsi: number;
+  macdHistogram: number;
+  divergences: { type: string; indicator: string; description: string; strength: string; barsAgo: number }[];
+  hasBullish: boolean;
+  hasBearish: boolean;
+}
+
+function DivergenceSection() {
+  const [filter, setFilter] = useState<"all" | "bullish" | "bearish">("all");
+  const [, navigate] = useLocation();
+
+  const { data: divData, isLoading } = useQuery<DivergenceItem[]>({
+    queryKey: ["/api/market/divergence"],
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
+
+  const items = (divData || []).filter(item => {
+    if (filter === "bullish") return item.hasBullish;
+    if (filter === "bearish") return item.hasBearish;
+    return item.divergences.length > 0;
+  });
+
+  const withDivergences = items.filter(i => i.divergences.length > 0);
+  const noDivergences = (divData || []).filter(i => i.divergences.length === 0);
+
+  return (
+    <div className="space-y-3" data-testid="divergence-section">
+      <p className="text-xs text-muted-foreground">Detects when price and indicators move in opposite directions — a strong reversal signal. Bullish divergence = potential bounce up. Bearish divergence = potential drop.</p>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        {(["all", "bullish", "bearish"] as const).map(f => (
+          <Button
+            key={f}
+            variant={filter === f ? "secondary" : "ghost"}
+            size="sm"
+            className="text-xs"
+            onClick={() => setFilter(f)}
+            data-testid={`button-div-filter-${f}`}
+          >
+            {f === "all" ? "All Active" : f === "bullish" ? "Bullish Only" : "Bearish Only"}
+          </Button>
+        ))}
+        <span className="text-[10px] text-muted-foreground ml-auto">
+          {withDivergences.length} coins with divergences detected
+        </span>
+      </div>
+
+      {withDivergences.length === 0 && filter === "all" && (
+        <Card>
+          <CardContent className="p-6 text-center">
+            <p className="text-sm text-muted-foreground">No divergences detected right now. This is normal — divergences are uncommon and appear when reversals may be forming.</p>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="space-y-2">
+        {withDivergences.map(item => (
+          <Card key={item.symbol} className="hover-elevate cursor-pointer" onClick={() => navigate(`/trade/${item.symbol}`)} data-testid={`card-div-${item.symbol}`}>
+            <CardContent className="p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">{item.symbol.replace("USDT", "")}</span>
+                  <span className="font-mono text-xs text-muted-foreground">${formatPrice(item.price)}</span>
+                  <span className={`text-xs font-mono ${item.priceChange24h >= 0 ? "text-green-400" : "text-red-400"}`}>
+                    {item.priceChange24h >= 0 ? "+" : ""}{item.priceChange24h.toFixed(2)}%
+                  </span>
+                </div>
+                <div className="flex gap-1">
+                  {item.hasBullish && <Badge variant="default" className="text-[9px]">Bullish Div</Badge>}
+                  {item.hasBearish && <Badge variant="destructive" className="text-[9px]">Bearish Div</Badge>}
+                </div>
+              </div>
+              <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
+                <span>RSI: <span className={`font-mono ${item.rsi < 30 ? "text-green-400" : item.rsi > 70 ? "text-red-400" : ""}`}>{item.rsi}</span></span>
+                <span>MACD Hist: <span className={`font-mono ${item.macdHistogram > 0 ? "text-green-400" : "text-red-400"}`}>{item.macdHistogram.toFixed(4)}</span></span>
+              </div>
+              <div className="space-y-1">
+                {item.divergences.map((d, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[10px]">
+                    {d.type === "bullish" ? <ArrowUp className="w-3 h-3 text-green-400 shrink-0" /> : <ArrowDown className="w-3 h-3 text-red-400 shrink-0" />}
+                    <span className={d.type === "bullish" ? "text-green-400" : "text-red-400"}>{d.indicator}</span>
+                    <span className="text-muted-foreground">{d.description}</span>
+                    <Badge variant="outline" className="text-[8px] px-1 py-0 ml-auto">{d.strength} | {d.barsAgo}h ago</Badge>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {filter === "all" && noDivergences.length > 0 && (
+        <div className="pt-2">
+          <p className="text-[10px] text-muted-foreground mb-1">No divergences: {noDivergences.map(i => i.symbol.replace("USDT", "")).join(", ")}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Multi-Timeframe Section ---
+interface MTFItem {
+  symbol: string;
+  price: number;
+  timeframes: Record<string, { rsi: number; ema9: number; ema21: number; macd: number; trend: string; score: number; price: number } | null>;
+  alignment: string;
+  bullishCount: number;
+  bearishCount: number;
+  totalTimeframes: number;
+}
+
+function MultiTimeframeSection() {
+  const [, navigate] = useLocation();
+
+  const { data: mtfData, isLoading } = useQuery<MTFItem[]>({
+    queryKey: ["/api/market/multi-timeframe"],
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
+
+  const items = mtfData || [];
+  const tfLabels = ["5m", "15m", "1H", "4H", "1D"];
+
+  function trendIcon(trend: string | undefined) {
+    if (trend === "bullish") return <ArrowUp className="w-3 h-3 text-green-400" />;
+    if (trend === "bearish") return <ArrowDown className="w-3 h-3 text-red-400" />;
+    return <Minus className="w-3 h-3 text-muted-foreground" />;
+  }
+
+  function trendBg(trend: string | undefined) {
+    if (trend === "bullish") return "bg-green-500/15";
+    if (trend === "bearish") return "bg-red-500/15";
+    return "bg-muted";
+  }
+
+  function alignmentBadge(alignment: string) {
+    switch (alignment) {
+      case "strong_bullish": return <Badge variant="default" className="text-[9px]">All Bullish</Badge>;
+      case "bullish": return <Badge variant="default" className="text-[9px]">Mostly Bullish</Badge>;
+      case "strong_bearish": return <Badge variant="destructive" className="text-[9px]">All Bearish</Badge>;
+      case "bearish": return <Badge variant="destructive" className="text-[9px]">Mostly Bearish</Badge>;
+      default: return <Badge variant="secondary" className="text-[9px]">Mixed</Badge>;
+    }
+  }
+
+  return (
+    <div className="space-y-3" data-testid="mtf-section">
+      <p className="text-xs text-muted-foreground">When all timeframes agree (all green or all red), it's a high-confidence signal. Mixed signals mean wait for alignment before entering.</p>
+
+      <div className="space-y-2">
+        {items.map(item => (
+          <Card key={item.symbol} className="hover-elevate cursor-pointer" onClick={() => navigate(`/trade/${item.symbol}`)} data-testid={`card-mtf-${item.symbol}`}>
+            <CardContent className="p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">{item.symbol.replace("USDT", "")}</span>
+                  <span className="font-mono text-xs text-muted-foreground">${formatPrice(item.price)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-muted-foreground">{item.bullishCount}/{item.totalTimeframes} bullish</span>
+                  {alignmentBadge(item.alignment)}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-5 gap-1">
+                {tfLabels.map(tf => {
+                  const tfData = item.timeframes[tf];
+                  return (
+                    <div key={tf} className={`rounded-md p-1.5 text-center ${trendBg(tfData?.trend)}`} data-testid={`cell-mtf-${item.symbol}-${tf}`}>
+                      <div className="flex items-center justify-center gap-0.5 mb-0.5">
+                        {trendIcon(tfData?.trend)}
+                        <span className="text-[10px] font-medium">{tf}</span>
+                      </div>
+                      {tfData ? (
+                        <div className="space-y-0.5">
+                          <span className={`block text-[9px] font-mono ${tfData.rsi < 30 ? "text-green-400" : tfData.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>
+                            RSI {tfData.rsi}
+                          </span>
+                          <span className={`block text-[9px] font-mono ${tfData.macd > 0 ? "text-green-400" : "text-red-400"}`}>
+                            MACD {tfData.macd > 0 ? "+" : ""}{tfData.macd > 1 ? tfData.macd.toFixed(2) : tfData.macd.toFixed(6)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-[9px] text-muted-foreground">N/A</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card>
+        <CardContent className="p-3">
+          <p className="text-xs text-muted-foreground mb-2">How to read Multi-TF</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div className="flex items-start gap-2">
+              <ArrowUp className="w-3 h-3 text-green-400 mt-0.5 shrink-0" />
+              <span><strong>All Green:</strong> All timeframes bullish — strongest buy signal. Enter with confidence.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <ArrowDown className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
+              <span><strong>All Red:</strong> All timeframes bearish — strongest sell signal. Avoid buying.</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// --- Volume Profile Section ---
+interface VolumeProfileData {
+  symbol: string;
+  currentPrice: number;
+  vwap: number;
+  poc: number;
+  valueAreaHigh: number;
+  valueAreaLow: number;
+  volumeAtPrice: { priceLevel: number; volume: number; buyVolume: number; sellVolume: number }[];
+  priceVsVwap: string;
+}
+
+function VolumeProfileSection() {
+  const [selectedSymbol, setSelectedSymbol] = useState("BTCUSDT");
+  const topSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT"];
+
+  const { data: vpData, isLoading } = useQuery<VolumeProfileData>({
+    queryKey: ["/api/market/volume-profile", selectedSymbol],
+    refetchInterval: 30000,
+  });
+
+  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
+
+  const maxVol = vpData ? Math.max(...vpData.volumeAtPrice.map(v => v.volume)) : 1;
+
+  return (
+    <div className="space-y-3" data-testid="volprofile-section">
+      <p className="text-xs text-muted-foreground">Shows where the most volume was traded. VWAP = average fair price. POC = price with highest volume. Price tends to gravitate toward these levels.</p>
+
+      <div className="flex items-center gap-1 overflow-x-auto pb-1">
+        {topSymbols.map(sym => (
+          <Button
+            key={sym}
+            variant={selectedSymbol === sym ? "secondary" : "ghost"}
+            size="sm"
+            className="text-xs whitespace-nowrap"
+            onClick={() => setSelectedSymbol(sym)}
+            data-testid={`button-vp-${sym}`}
+          >
+            {sym.replace("USDT", "")}
+          </Button>
+        ))}
+      </div>
+
+      {vpData && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Card>
+              <CardContent className="p-3 text-center">
+                <p className="text-[10px] text-muted-foreground">Current Price</p>
+                <p className="text-sm font-mono font-medium" data-testid="text-vp-price">${formatPrice(vpData.currentPrice)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3 text-center">
+                <p className="text-[10px] text-muted-foreground">VWAP (Fair Price)</p>
+                <p className={`text-sm font-mono font-medium ${vpData.priceVsVwap === "above" ? "text-green-400" : "text-red-400"}`} data-testid="text-vp-vwap">
+                  ${formatPrice(vpData.vwap)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3 text-center">
+                <p className="text-[10px] text-muted-foreground">POC (Max Volume)</p>
+                <p className="text-sm font-mono font-medium text-yellow-400" data-testid="text-vp-poc">${formatPrice(vpData.poc)}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="p-3 text-center">
+                <p className="text-[10px] text-muted-foreground">Value Area</p>
+                <p className="text-xs font-mono" data-testid="text-vp-va">
+                  <span className="text-green-400">{formatPrice(vpData.valueAreaLow)}</span>
+                  <span className="text-muted-foreground"> - </span>
+                  <span className="text-red-400">{formatPrice(vpData.valueAreaHigh)}</span>
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardContent className="p-3">
+              <p className="text-xs text-muted-foreground mb-2">Volume at Price (200H)</p>
+              <div className="space-y-0.5">
+                {vpData.volumeAtPrice.slice().reverse().map((level, i) => {
+                  const isCurrentZone = Math.abs(level.priceLevel - vpData.currentPrice) / vpData.currentPrice < 0.005;
+                  const isPOC = Math.abs(level.priceLevel - vpData.poc) / vpData.poc < 0.005;
+                  const isVWAP = Math.abs(level.priceLevel - vpData.vwap) / vpData.vwap < 0.005;
+                  const buyPct = level.volume > 0 ? (level.buyVolume / level.volume) * 100 : 50;
+                  const barWidth = maxVol > 0 ? (level.volume / maxVol) * 100 : 0;
+
+                  return (
+                    <div key={i} className={`flex items-center gap-2 py-0.5 rounded-sm px-1 ${isCurrentZone ? "bg-blue-500/10" : ""}`} data-testid={`row-vp-${i}`}>
+                      <span className={`text-[9px] font-mono w-20 text-right shrink-0 ${isPOC ? "text-yellow-400 font-bold" : isVWAP ? "text-blue-400" : "text-muted-foreground"}`}>
+                        {formatPrice(level.priceLevel)}
+                        {isPOC ? " POC" : isVWAP ? " VWAP" : ""}
+                      </span>
+                      <div className="flex-1 h-3 flex rounded-sm overflow-hidden bg-muted/30">
+                        <div className="h-full bg-green-400/50" style={{ width: `${barWidth * (buyPct / 100)}%` }} />
+                        <div className="h-full bg-red-400/50" style={{ width: `${barWidth * ((100 - buyPct) / 100)}%` }} />
+                      </div>
+                      <span className="text-[8px] font-mono text-muted-foreground w-14 text-right shrink-0">{formatVolume(level.volume)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-3">
+              <p className="text-xs text-muted-foreground mb-2">How to use Volume Profile</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div className="flex items-start gap-2">
+                  <div className="w-3 h-3 rounded-sm bg-yellow-400/60 shrink-0 mt-0.5" />
+                  <span><strong>POC:</strong> Most traded price. Acts as a magnet — price often returns here.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <div className="w-3 h-3 rounded-sm bg-blue-400/60 shrink-0 mt-0.5" />
+                  <span><strong>VWAP:</strong> Fair price. Buy below VWAP for value, sell above for profit.</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// --- Momentum Heatmap Section ---
+interface MomentumItem {
+  symbol: string;
+  price: number;
+  priceChange24h: number;
+  rsi: number;
+  mom1h: number;
+  mom4h: number;
+  mom12h: number;
+  mom24h: number;
+  volRatio: number;
+  momentumScore: number;
+  strength: string;
+}
+
+function MomentumSection() {
+  const [, navigate] = useLocation();
+
+  const { data: momData, isLoading } = useQuery<MomentumItem[]>({
+    queryKey: ["/api/market/momentum"],
+    refetchInterval: 15000,
+  });
+
+  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
+
+  const items = momData || [];
+
+  function strengthColor(strength: string) {
+    switch (strength) {
+      case "strong_up": return "text-emerald-400";
+      case "up": return "text-green-400";
+      case "down": return "text-red-400";
+      case "strong_down": return "text-red-500";
+      default: return "text-muted-foreground";
+    }
+  }
+
+  function strengthLabel(strength: string) {
+    switch (strength) {
+      case "strong_up": return "Strong Up";
+      case "up": return "Gaining";
+      case "down": return "Losing";
+      case "strong_down": return "Strong Down";
+      default: return "Flat";
+    }
+  }
+
+  function momentumBg(value: number) {
+    if (value > 1) return "bg-green-500/30 text-green-400";
+    if (value > 0) return "bg-green-500/10 text-green-400";
+    if (value < -1) return "bg-red-500/30 text-red-400";
+    if (value < 0) return "bg-red-500/10 text-red-400";
+    return "bg-muted text-muted-foreground";
+  }
+
+  return (
+    <div className="space-y-3" data-testid="momentum-section">
+      <p className="text-xs text-muted-foreground">Real-time momentum across multiple periods. Green = gaining strength, Red = losing. Sorted by strongest momentum first.</p>
+
+      <div className="overflow-x-auto">
+        <div className="space-y-1 min-w-[500px]">
+          <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto_auto_auto] gap-2 px-3 py-1 text-[9px] text-muted-foreground">
+            <span>Coin</span>
+            <span className="text-right w-12">1H</span>
+            <span className="text-right w-12">4H</span>
+            <span className="text-right w-12">12H</span>
+            <span className="text-right w-12">24H</span>
+            <span className="text-right w-10">RSI</span>
+            <span className="text-right w-10">Vol</span>
+            <span className="text-right w-16">Strength</span>
+          </div>
+
+          {items.map(item => (
+            <Card key={item.symbol} className="hover-elevate cursor-pointer" onClick={() => navigate(`/trade/${item.symbol}`)} data-testid={`card-mom-${item.symbol}`}>
+              <CardContent className="grid grid-cols-[1fr_auto_auto_auto_auto_auto_auto_auto] gap-2 items-center p-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">{item.symbol.replace("USDT", "")}</span>
+                  <span className="font-mono text-[10px] text-muted-foreground">{formatPrice(item.price)}</span>
+                </div>
+                {[item.mom1h, item.mom4h, item.mom12h, item.mom24h].map((mom, i) => (
+                  <div key={i} className={`text-right w-12 text-[10px] font-mono rounded-sm px-1 py-0.5 ${momentumBg(mom)}`}>
+                    {mom >= 0 ? "+" : ""}{mom.toFixed(2)}%
+                  </div>
+                ))}
+                <span className={`text-right w-10 text-[10px] font-mono ${item.rsi < 30 ? "text-green-400" : item.rsi > 70 ? "text-red-400" : "text-muted-foreground"}`}>
+                  {item.rsi}
+                </span>
+                <span className={`text-right w-10 text-[10px] font-mono ${item.volRatio > 2 ? "text-yellow-400" : "text-muted-foreground"}`}>
+                  {item.volRatio}x
+                </span>
+                <div className="text-right w-16">
+                  <span className={`text-[10px] font-medium ${strengthColor(item.strength)}`}>
+                    {strengthLabel(item.strength)}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- Order Flow Section ---
+interface OrderFlowItem {
+  symbol: string;
+  price: number;
+  totalBidUsd: number;
+  totalAskUsd: number;
+  bidPct: number;
+  askPct: number;
+  imbalance: number;
+  nearImbalance: number;
+  pressure: string;
+}
+
+function OrderFlowSection() {
+  const { data: flowData, isLoading } = useQuery<OrderFlowItem[]>({
+    queryKey: ["/api/market/orderflow"],
+    refetchInterval: 10000,
+  });
+
+  if (isLoading) return <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
+
+  const items = flowData || [];
+
+  function pressureBadge(pressure: string) {
+    switch (pressure) {
+      case "strong_buy": return <Badge variant="default" className="text-[9px]">Strong Buy</Badge>;
+      case "buy": return <Badge variant="default" className="text-[9px]">Buy Pressure</Badge>;
+      case "strong_sell": return <Badge variant="destructive" className="text-[9px]">Strong Sell</Badge>;
+      case "sell": return <Badge variant="destructive" className="text-[9px]">Sell Pressure</Badge>;
+      default: return <Badge variant="secondary" className="text-[9px]">Balanced</Badge>;
+    }
+  }
+
+  return (
+    <div className="space-y-3" data-testid="orderflow-section">
+      <p className="text-xs text-muted-foreground">Real-time bid vs ask volume from the order book. When buyers dominate (green bar wider), price tends to go up. When sellers dominate, price tends to drop.</p>
+
+      <div className="space-y-2">
+        {items.map(item => (
+          <Card key={item.symbol} data-testid={`card-flow-${item.symbol}`}>
+            <CardContent className="p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-sm">{item.symbol.replace("USDT", "")}</span>
+                  <span className="font-mono text-xs text-muted-foreground">${formatPrice(item.price)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-[10px] font-mono ${item.imbalance > 0 ? "text-green-400" : "text-red-400"}`}>
+                    {item.imbalance > 0 ? "+" : ""}{item.imbalance.toFixed(1)}%
+                  </span>
+                  {pressureBadge(item.pressure)}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                  <span className="w-8">Bids</span>
+                  <div className="flex-1 h-4 bg-muted rounded-sm overflow-hidden flex">
+                    <div className="h-full bg-green-400/60 flex items-center justify-end pr-1 transition-all" style={{ width: `${item.bidPct}%` }}>
+                      <span className="text-[8px] font-mono text-white">{item.bidPct.toFixed(0)}%</span>
+                    </div>
+                    <div className="h-full bg-red-400/60 flex items-center pl-1 transition-all" style={{ width: `${item.askPct}%` }}>
+                      <span className="text-[8px] font-mono text-white">{item.askPct.toFixed(0)}%</span>
+                    </div>
+                  </div>
+                  <span className="w-8 text-right">Asks</span>
+                </div>
+
+                <div className="flex items-center justify-between text-[10px]">
+                  <span className="text-muted-foreground">
+                    Bid: <span className="font-mono text-green-400">${formatVolume(item.totalBidUsd)}</span>
+                  </span>
+                  <span className="text-muted-foreground">
+                    Near: <span className={`font-mono ${item.nearImbalance > 0 ? "text-green-400" : "text-red-400"}`}>
+                      {item.nearImbalance > 0 ? "+" : ""}{item.nearImbalance.toFixed(1)}%
+                    </span>
+                  </span>
+                  <span className="text-muted-foreground">
+                    Ask: <span className="font-mono text-red-400">${formatVolume(item.totalAskUsd)}</span>
+                  </span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      <Card>
+        <CardContent className="p-3">
+          <p className="text-xs text-muted-foreground mb-2">How to read Order Flow</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+            <div className="flex items-start gap-2">
+              <div className="w-3 h-3 rounded-sm bg-green-400/60 shrink-0 mt-0.5" />
+              <span><strong>Buy Pressure:</strong> More bids than asks. Buyers want in — bullish short-term.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <div className="w-3 h-3 rounded-sm bg-red-400/60 shrink-0 mt-0.5" />
+              <span><strong>Sell Pressure:</strong> More asks than bids. Sellers want out — bearish short-term.</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // --- Main Trade Signals Tab ---
 export function TradeSignalsTab({ tickers }: { tickers: Ticker[] }) {
-  const [section, setSection] = useState<Section>("pulse");
+  const [section, setSection] = useState<Section>("scanner");
 
   return (
     <div className="space-y-4" data-testid="trade-signals-tab">
@@ -757,6 +1322,11 @@ export function TradeSignalsTab({ tickers }: { tickers: Ticker[] }) {
       </div>
 
       {section === "scanner" && <ScannerSection tickers={tickers} />}
+      {section === "divergence" && <DivergenceSection />}
+      {section === "mtf" && <MultiTimeframeSection />}
+      {section === "volprofile" && <VolumeProfileSection />}
+      {section === "momentum" && <MomentumSection />}
+      {section === "orderflow" && <OrderFlowSection />}
       {section === "sr" && <SupportResistanceSection />}
       {section === "signals" && <SignalsSection />}
       {section === "correlation" && <CorrelationSection />}
