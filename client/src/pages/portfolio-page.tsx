@@ -65,16 +65,21 @@ export default function PortfolioPage() {
         const symbol = `${b.currency}USDT`;
         const currentPrice = tickerMap[symbol] || 0;
         const currentValue = b.balance * currentPrice;
+        const avgBuyPrice = (b as any).avgBuyPrice || 0;
+        const costBasis = b.balance * avgBuyPrice;
+        const pnl = costBasis > 0 ? currentValue - costBasis : 0;
+        const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+
         return {
           id: 0,
           userId: 0,
           symbol,
           quantity: b.balance,
-          avgBuyPrice: 0,
+          avgBuyPrice,
           currentPrice,
           currentValue,
-          pnl: 0,
-          pnlPercent: 0,
+          pnl,
+          pnlPercent,
         };
       });
   }, [isRealMode, krakenBalancesData, tickerMap]);

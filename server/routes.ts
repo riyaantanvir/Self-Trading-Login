@@ -2508,16 +2508,52 @@ export async function registerRoutes(
 
     const creds = { apiKey: user.krakenApiKey, apiSecret: user.krakenApiSecret };
 
-    const result = await getKrakenAllBalances(creds);
-    const balances: { currency: string; available: number; balance: number; wallet: string }[] = [];
+    try {
+      const balanceResult = await getKrakenAllBalances(creds);
+      if (!balanceResult.success || !balanceResult.balances) {
+        return res.json({ balances: [] });
+      }
 
-    if (result.success && result.balances) {
-      result.balances.forEach(b => {
-        balances.push({ ...b, wallet: "spot" });
+      // Fetch closed orders to calculate average buy price
+      const ordersResult = await fetchKrakenClosedOrders(creds);
+      const closedOrders = ordersResult.success ? Object.values(ordersResult.orders || {}) : [];
+
+      const balances = balanceResult.balances.map((b: any) => {
+        // Find all buy orders for this asset to calculate average buy price
+        // Kraken closed orders usually have pairs like XBTUSD, ETHUSDT etc.
+        const assetOrders = closedOrders.filter((o: any) => {
+          const pair = o.descr.pair;
+          const isBuy = o.descr.type === "buy";
+          const isClosed = o.status === "closed";
+          
+          // Check if the currency is part of the pair (e.g., BTC in XBTUSD or BTCUSDT)
+          // XBT is Kraken's BTC
+          const normalizedCurrency = b.currency === "BTC" ? "XBT" : b.currency;
+          return isBuy && isClosed && pair.includes(normalizedCurrency);
+        });
+        
+        let totalCost = 0;
+        let totalQty = 0;
+        
+        assetOrders.forEach((o: any) => {
+          totalCost += parseFloat(o.cost);
+          totalQty += parseFloat(o.vol_exec);
+        });
+
+        const avgBuyPrice = totalQty > 0 ? totalCost / totalQty : 0;
+
+        return {
+          ...b,
+          avgBuyPrice,
+          wallet: "spot"
+        };
       });
-    }
 
-    res.json({ balances });
+      res.json({ balances });
+    } catch (err: any) {
+      console.error(`[Kraken] Balances fetch failed: ${err.message}`);
+      res.json({ balances: [] });
+    }
   });
 
   app.get("/api/alerts", async (req, res) => {

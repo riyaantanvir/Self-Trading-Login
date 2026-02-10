@@ -203,6 +203,16 @@ export async function getKrakenOrderDetail(
   return { success: true, data: result.result };
 }
 
+export async function fetchKrakenClosedOrders(
+  creds: KrakenCredentials
+): Promise<{ success: boolean; orders?: any; error?: string }> {
+  const result = await krakenRequest(creds, "/0/private/ClosedOrders");
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, orders: result.result?.closed || {} };
+}
+
 export async function validateKrakenCredentials(
   creds: KrakenCredentials
 ): Promise<{ valid: boolean; error?: string }> {
