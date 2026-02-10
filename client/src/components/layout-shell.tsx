@@ -38,11 +38,11 @@ const primaryNavItems = [
   { label: "Market", icon: BarChart3, href: "/" },
   { label: "Assets", icon: Briefcase, href: "/assets" },
   { label: "Portfolio", icon: Wallet, href: "/portfolio" },
-  { label: "Alerts", icon: Bell, href: "/alerts" },
   { label: "Autopilot", icon: Zap, href: "/autopilot" },
 ];
 
 const moreNavItems = [
+  { label: "Alerts", icon: Bell, href: "/alerts" },
   { label: "Pay", icon: Send, href: "/pay" },
   { label: "History", icon: History, href: "/history" },
   { label: "Settings", icon: Settings, href: "/settings" },
