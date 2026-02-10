@@ -28,7 +28,8 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `/portfolio` - Holdings, P&L, and quick sell
 - `/history` - Trade history
 - `/alerts` - Price alerts management (create, view, delete alerts)
-- `/admin` - Admin panel (admin-only, placeholder for future settings)
+- `/settings` - Settings page (logout, admin panel link for admins)
+- `/admin` - Admin panel (admin-only, user management & balance top-up)
 
 ## API Endpoints
 - `GET /api/market/tickers` - Live cached ticker data (from Binance WS)

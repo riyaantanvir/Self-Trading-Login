@@ -1,10 +1,10 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Wallet, History, LogOut, TrendingUp, Briefcase, Shield, Bell } from "lucide-react";
+import { BarChart3, Wallet, History, TrendingUp, Briefcase, Bell, Settings } from "lucide-react";
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
-  const { user, logoutMutation } = useAuth();
+  const { user } = useAuth();
   const [location] = useLocation();
 
   if (!user) return <>{children}</>;
@@ -15,9 +15,8 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
     { label: "Portfolio", icon: Wallet, href: "/portfolio" },
     { label: "History", icon: History, href: "/history" },
     { label: "Alerts", icon: Bell, href: "/alerts" },
+    { label: "Settings", icon: Settings, href: "/settings" },
   ];
-
-  const adminItem = user.isAdmin ? { label: "Admin", icon: Shield, href: "/admin" } : null;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -43,19 +42,6 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
                 </Button>
               </Link>
             ))}
-            {adminItem && (
-              <Link href={adminItem.href}>
-                <Button
-                  variant={location === adminItem.href ? "secondary" : "ghost"}
-                  size="sm"
-                  data-testid="link-admin"
-                  className="gap-2"
-                >
-                  <adminItem.icon className="w-4 h-4" />
-                  {adminItem.label}
-                </Button>
-              </Link>
-            )}
           </nav>
         </div>
 
@@ -66,17 +52,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
               ${Number(user.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
-          <div className="flex items-center gap-1 sm:gap-2">
-            <span className="text-sm text-muted-foreground hidden lg:inline" data-testid="text-username">{user.username}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => logoutMutation.mutate()}
-              data-testid="button-logout"
-            >
-              <LogOut className="w-4 h-4" />
-            </Button>
-          </div>
+          <span className="text-sm text-muted-foreground hidden lg:inline" data-testid="text-username">{user.username}</span>
         </div>
       </header>
 
@@ -101,19 +77,6 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
             </Link>
           );
         })}
-        {adminItem && (
-          <Link href={adminItem.href} className="flex-1">
-            <div
-              className={`flex flex-col items-center justify-center py-1.5 gap-0.5 transition-colors ${
-                location === adminItem.href ? "text-[#0ecb81]" : "text-muted-foreground"
-              }`}
-              data-testid="link-mobile-admin"
-            >
-              <adminItem.icon className={`w-5 h-5 ${location === adminItem.href ? "text-[#0ecb81]" : ""}`} />
-              <span className="text-[10px] font-medium leading-none">Admin</span>
-            </div>
-          </Link>
-        )}
       </nav>
     </div>
   );
