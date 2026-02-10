@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, hashPassword } from "./auth";
 import { z } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
-import { getBinanceUsdtBalance, getBinanceAllBalances, placeBinanceOrder, validateBinanceCredentials, getBinanceFundingBalance, getBinanceAccountInfo } from "./binance-trade";
+import { getBinanceUsdtBalance, getBinanceAllBalances, placeBinanceOrder, validateBinanceCredentials, getBinanceFundingBalance, getBinanceAccountInfo, clearPlatformCache } from "./binance-trade";
 
 async function sendTelegramMessage(botToken: string, chatId: string, message: string): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -2455,6 +2455,8 @@ export async function registerRoutes(
 
   app.delete("/api/user/binance-keys", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = await storage.getUser(req.user!.id);
+    if (user?.binanceApiKey) clearPlatformCache(user.binanceApiKey);
     await storage.updateBinanceCredentials(req.user!.id, "", "");
     await storage.updateTradingMode(req.user!.id, "demo");
     res.json({ success: true });
@@ -2480,7 +2482,21 @@ export async function registerRoutes(
     const creds = { apiKey: user.binanceApiKey, apiSecret: user.binanceApiSecret };
 
     const spotResult = await getBinanceUsdtBalance(creds);
-    let spotBalance = spotResult.success ? (spotResult.balance || 0) : 0;
+    if (!spotResult.success) {
+      const errorMsg = spotResult.error || "Failed to connect to Binance";
+      const isGeoBlocked = errorMsg.includes('451') || errorMsg.includes('restricted location') || errorMsg.includes('Geo-restricted');
+      console.error(`[Binance] Balance fetch failed: ${errorMsg}`);
+      return res.json({
+        balance: 0,
+        spotBalance: 0,
+        fundingBalance: 0,
+        error: isGeoBlocked
+          ? "Binance.com API is geo-restricted from this server location. If you use Binance.US, please enter Binance.US API keys instead."
+          : errorMsg
+      });
+    }
+
+    let spotBalance = spotResult.balance || 0;
 
     let fundingBalance = 0;
     try {

@@ -8,6 +8,7 @@ interface TradingModeData {
 
 interface BinanceBalanceData {
   balance: number;
+  error?: string;
 }
 
 export function useDemoRealMode() {
@@ -36,5 +37,6 @@ export function useDemoRealMode() {
     tradingMode: tradingModeData?.tradingMode || "demo",
     hasBinanceKeys: tradingModeData?.hasBinanceKeys || false,
     binanceBalance: binanceBalanceData?.balance,
+    binanceError: binanceBalanceData?.error,
   };
 }

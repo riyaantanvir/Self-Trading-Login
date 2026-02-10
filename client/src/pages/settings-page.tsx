@@ -20,7 +20,7 @@ export default function SettingsPage() {
   const [binanceApiSecret, setBinanceApiSecret] = useState("");
   const [showSecret, setShowSecret] = useState(false);
 
-  const { isRealMode, effectiveBalance, hasBinanceKeys, binanceBalance } = useDemoRealMode();
+  const { isRealMode, effectiveBalance, hasBinanceKeys, binanceBalance, binanceError } = useDemoRealMode();
 
   const { data: binanceKeysData } = useQuery<{ hasKeys: boolean; apiKey: string }>({
     queryKey: ["/api/user/binance-keys"],
@@ -172,6 +172,12 @@ export default function SettingsPage() {
               </div>
             </div>
           </div>
+
+          {binanceError && hasKeys && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3" data-testid="text-binance-error">
+              <div className="text-xs text-destructive font-medium">{binanceError}</div>
+            </div>
+          )}
 
           {hasKeys && (
             <div className="rounded-md bg-muted p-3 flex items-center justify-between gap-2">
