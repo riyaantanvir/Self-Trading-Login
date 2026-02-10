@@ -180,3 +180,23 @@ export const notifications = pgTable("notifications", {
 export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+
+export const autopilotBots = pgTable("autopilot_bots", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  name: text("name").notNull(),
+  symbol: text("symbol").notNull(),
+  side: text("side").notNull().default("buy"),
+  tradeAmount: doublePrecision("trade_amount").notNull().default(10),
+  strategy: text("strategy").notNull().default("custom"),
+  strategyConfig: text("strategy_config").default("{}"),
+  isActive: boolean("is_active").default(false).notNull(),
+  totalTrades: integer("total_trades").default(0).notNull(),
+  totalPnl: doublePrecision("total_pnl").default(0).notNull(),
+  lastTradeAt: timestamp("last_trade_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertAutopilotBotSchema = createInsertSchema(autopilotBots).omit({ id: true, userId: true, totalTrades: true, totalPnl: true, lastTradeAt: true, createdAt: true });
+export type AutopilotBot = typeof autopilotBots.$inferSelect;
+export type InsertAutopilotBot = z.infer<typeof insertAutopilotBotSchema>;

@@ -1,4 +1,4 @@
-import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, apiKeys, futuresWallet, futuresPositions, futuresTrades, transfers, notifications, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin, type ApiKey, type FuturesWallet, type FuturesPosition, type FuturesTrade, type Transfer, type Notification } from "@shared/schema";
+import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, apiKeys, futuresWallet, futuresPositions, futuresTrades, transfers, notifications, autopilotBots, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin, type ApiKey, type FuturesWallet, type FuturesPosition, type FuturesTrade, type Transfer, type Notification, type AutopilotBot } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lt, or, ilike } from "drizzle-orm";
 
@@ -67,6 +67,14 @@ export interface IStorage {
   createNotification(userId: number, type: string, title: string, message: string, metadata?: string): Promise<Notification>;
   markNotificationRead(userId: number, notificationId: number): Promise<void>;
   markAllNotificationsRead(userId: number): Promise<void>;
+
+  getAutopilotBots(userId: number): Promise<AutopilotBot[]>;
+  getAutopilotBot(userId: number, botId: number): Promise<AutopilotBot | undefined>;
+  createAutopilotBot(userId: number, data: { name: string; symbol: string; side: string; tradeAmount: number; strategy: string; strategyConfig?: string }): Promise<AutopilotBot>;
+  updateAutopilotBot(userId: number, botId: number, data: Partial<{ name: string; symbol: string; side: string; tradeAmount: number; strategy: string; strategyConfig: string; isActive: boolean }>): Promise<AutopilotBot | undefined>;
+  deleteAutopilotBot(userId: number, botId: number): Promise<void>;
+  toggleAutopilotBot(userId: number, botId: number, isActive: boolean): Promise<void>;
+  incrementBotTrades(botId: number, pnl: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -408,6 +416,66 @@ export class DatabaseStorage implements IStorage {
     await db.update(notifications)
       .set({ isRead: true })
       .where(eq(notifications.userId, userId));
+  }
+
+  async getAutopilotBots(userId: number): Promise<AutopilotBot[]> {
+    return await db.select().from(autopilotBots)
+      .where(eq(autopilotBots.userId, userId))
+      .orderBy(autopilotBots.createdAt);
+  }
+
+  async getAutopilotBot(userId: number, botId: number): Promise<AutopilotBot | undefined> {
+    const [bot] = await db.select().from(autopilotBots)
+      .where(and(eq(autopilotBots.id, botId), eq(autopilotBots.userId, userId)));
+    return bot;
+  }
+
+  async createAutopilotBot(userId: number, data: { name: string; symbol: string; side: string; tradeAmount: number; strategy: string; strategyConfig?: string }): Promise<AutopilotBot> {
+    const [bot] = await db.insert(autopilotBots).values({
+      userId,
+      name: data.name,
+      symbol: data.symbol,
+      side: data.side,
+      tradeAmount: data.tradeAmount,
+      strategy: data.strategy,
+      strategyConfig: data.strategyConfig || "{}",
+      isActive: false,
+      totalTrades: 0,
+      totalPnl: 0,
+    }).returning();
+    return bot;
+  }
+
+  async updateAutopilotBot(userId: number, botId: number, data: Partial<{ name: string; symbol: string; side: string; tradeAmount: number; strategy: string; strategyConfig: string; isActive: boolean }>): Promise<AutopilotBot | undefined> {
+    const [bot] = await db.update(autopilotBots)
+      .set(data)
+      .where(and(eq(autopilotBots.id, botId), eq(autopilotBots.userId, userId)))
+      .returning();
+    return bot;
+  }
+
+  async deleteAutopilotBot(userId: number, botId: number): Promise<void> {
+    await db.delete(autopilotBots)
+      .where(and(eq(autopilotBots.id, botId), eq(autopilotBots.userId, userId)));
+  }
+
+  async toggleAutopilotBot(userId: number, botId: number, isActive: boolean): Promise<void> {
+    await db.update(autopilotBots)
+      .set({ isActive })
+      .where(and(eq(autopilotBots.id, botId), eq(autopilotBots.userId, userId)));
+  }
+
+  async incrementBotTrades(botId: number, pnl: number): Promise<void> {
+    const [bot] = await db.select().from(autopilotBots).where(eq(autopilotBots.id, botId));
+    if (bot) {
+      await db.update(autopilotBots)
+        .set({
+          totalTrades: bot.totalTrades + 1,
+          totalPnl: bot.totalPnl + pnl,
+          lastTradeAt: new Date(),
+        })
+        .where(eq(autopilotBots.id, botId));
+    }
   }
 }
 

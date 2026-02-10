@@ -3179,5 +3179,78 @@ export async function registerRoutes(
     }
   });
 
+  // ===== Autopilot Bots =====
+  app.get("/api/autopilot/bots", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const bots = await storage.getAutopilotBots((req.user as any).id);
+      res.json(bots);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch bots" });
+    }
+  });
+
+  app.get("/api/autopilot/bots/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const bot = await storage.getAutopilotBot((req.user as any).id, Number(req.params.id));
+      if (!bot) return res.status(404).json({ message: "Bot not found" });
+      res.json(bot);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch bot" });
+    }
+  });
+
+  app.post("/api/autopilot/bots", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const { name, symbol, side, tradeAmount, strategy, strategyConfig } = req.body;
+      if (!name || !symbol) return res.status(400).json({ message: "Name and symbol are required" });
+      const bot = await storage.createAutopilotBot((req.user as any).id, {
+        name,
+        symbol: symbol.toUpperCase(),
+        side: side || "buy",
+        tradeAmount: tradeAmount || 10,
+        strategy: strategy || "custom",
+        strategyConfig: strategyConfig || "{}",
+      });
+      res.json(bot);
+    } catch {
+      res.status(500).json({ message: "Failed to create bot" });
+    }
+  });
+
+  app.patch("/api/autopilot/bots/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const bot = await storage.updateAutopilotBot((req.user as any).id, Number(req.params.id), req.body);
+      if (!bot) return res.status(404).json({ message: "Bot not found" });
+      res.json(bot);
+    } catch {
+      res.status(500).json({ message: "Failed to update bot" });
+    }
+  });
+
+  app.post("/api/autopilot/bots/:id/toggle", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const { isActive } = req.body;
+      await storage.toggleAutopilotBot((req.user as any).id, Number(req.params.id), isActive);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to toggle bot" });
+    }
+  });
+
+  app.delete("/api/autopilot/bots/:id", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      await storage.deleteAutopilotBot((req.user as any).id, Number(req.params.id));
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to delete bot" });
+    }
+  });
+
   return httpServer;
 }

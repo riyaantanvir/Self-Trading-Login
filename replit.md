@@ -24,6 +24,7 @@ The platform is built with a React, Vite, TypeScript, TailwindCSS, and shadcn/ui
     -   **Smart Signal Alerts:** Background scanner for buy/sell signals near S/R zones, with Telegram alerts and cooldowns.
     -   **Notification System:** Bell icon in the header with unread badges, showing notifications for trades, transfers, and futures actions.
     -   **Binance Pay-style Transfers:** Search users, transfer funds, and view transfer history.
+    -   **Autopilot:** Create and manage trading bots with custom rules. Bot CRUD, toggle on/off, strategy config placeholder for user-provided calculation logic. DB autopilot_bots table, /autopilot route.
 -   **Admin Panel:** Provides user management, balance top-up for users, and API key management (masked display).
 -   **UI/UX:** Binance-style interface with professional TradingView chart styling (dark background #131722, muted grids).
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Wallet, History, TrendingUp, Briefcase, Bell, Settings, Send } from "lucide-react";
+import { BarChart3, Wallet, History, TrendingUp, Briefcase, Bell, Settings, Send, Zap } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 
 function useTradingMode() {
@@ -47,6 +47,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
     { label: "Portfolio", icon: Wallet, href: "/portfolio" },
     { label: "History", icon: History, href: "/history" },
     { label: "Alerts", icon: Bell, href: "/alerts" },
+    { label: "Autopilot", icon: Zap, href: "/autopilot" },
     { label: "Settings", icon: Settings, href: "/settings" },
   ];
 
