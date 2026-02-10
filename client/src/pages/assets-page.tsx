@@ -128,13 +128,14 @@ export default function AssetsPage() {
   const krakenHoldingsItems = useMemo(() => {
     if (!isRealMode || !krakenBalancesData?.balances) return [];
     return krakenBalancesData.balances
-      .filter((b) => !["USDT", "USDC", "USD"].includes(b.currency) && b.balance > 0)
+      .filter((b) => b.balance > 0)
       .map((b) => {
-        const symbol = `${b.currency}USDT`;
-        const ticker = tickerMap[symbol];
-        const currentPrice = ticker ? parseFloat(ticker.lastPrice) : 0;
-        const currentValue = b.balance * currentPrice;
         const coinName = b.currency;
+        const symbol = ["USD", "USDT", "USDC"].includes(coinName) ? coinName : `${coinName}USDT`;
+        const ticker = tickerMap[symbol];
+        const currentPrice = ["USD", "USDT", "USDC"].includes(coinName) ? 1 : (ticker ? parseFloat(ticker.lastPrice) : 0);
+        const currentValue = b.balance * currentPrice;
+        
         return {
           id: 0,
           userId: 0,
@@ -150,7 +151,14 @@ export default function AssetsPage() {
           avgBuyPrice: 0,
         };
       })
-      .sort((a, b) => b.currentValue - a.currentValue);
+      .sort((a, b) => {
+        // Always put USD/USDT/USDC at the top
+        const isCashA = ["USD", "USDT", "USDC"].includes(a.coinName);
+        const isCashB = ["USD", "USDT", "USDC"].includes(b.coinName);
+        if (isCashA && !isCashB) return -1;
+        if (!isCashA && isCashB) return 1;
+        return b.currentValue - a.currentValue;
+      });
   }, [isRealMode, krakenBalancesData, tickerMap]);
 
   const portfolioItems = useMemo(() => {
@@ -378,31 +386,33 @@ export default function AssetsPage() {
             </div>
           </div>
 
-          <div
-            className="rounded-md border border-border bg-card p-4 mb-3 hover-elevate cursor-pointer"
-            onClick={() => navigate("/")}
-            data-testid="card-asset-USDT"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className={`w-9 h-9 rounded-full ${isRealMode ? "bg-[#2775CA]" : "bg-[#26A17B]"} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
-                  $
+          {!isRealMode && (
+            <div
+              className="rounded-md border border-border bg-card p-4 mb-3 hover-elevate cursor-pointer"
+              onClick={() => navigate("/")}
+              data-testid="card-asset-USDT"
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-[#26A17B] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                    $
+                  </div>
+                  <div>
+                    <div className="font-semibold text-foreground">USDT</div>
+                    <div className="text-xs text-muted-foreground">Tether</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="font-semibold text-foreground">{isRealMode ? "USD" : "USDT"}</div>
-                  <div className="text-xs text-muted-foreground">{isRealMode ? "Kraken Balance" : "Tether"}</div>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="font-mono font-semibold text-foreground" data-testid="text-quantity-USDT">
-                  {formatQuantity(cashBalance)}
-                </div>
-                <div className="text-xs text-muted-foreground font-mono">
-                  {formatAmount(cashBalance)} {isRealMode ? "USD" : "USDT"}
+                <div className="text-right">
+                  <div className="font-mono font-semibold text-foreground" data-testid="text-quantity-USDT">
+                    {formatQuantity(cashBalance)}
+                  </div>
+                  <div className="text-xs text-muted-foreground font-mono">
+                    {formatAmount(cashBalance)} USDT
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           {filteredItems.map((item) => {
             const flash = priceFlashes.get(item.symbol);
