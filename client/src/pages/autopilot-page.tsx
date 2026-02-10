@@ -591,7 +591,25 @@ function DcaBotDashboard({ bot, onBack }: { bot: AutopilotBot; onBack: () => voi
       toast({ title: "Sell Executed", description: `Sold ${data.soldQuantity.toFixed(6)} coins. PnL: $${data.pnl.toFixed(2)}` });
     },
     onError: (err: any) => {
-      toast({ title: "Sell Failed", description: err.message || "Failed to execute sell", variant: "destructive" });
+      const errorMsg = err.message || "Failed to execute sell";
+      toast({ title: "Sell Failed", description: errorMsg, variant: "destructive" });
+    },
+  });
+
+  const sellAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/dca/bots/${bot.id}/sell-all`, {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dca/bots", bot.id, "orders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/autopilot/bots"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+      toast({ title: "Sell All Completed", description: `Sold all ${data.soldQuantity.toFixed(6)} coins. PnL: $${data.pnl.toFixed(2)}` });
+    },
+    onError: (err: any) => {
+      const errorMsg = err.message || "Failed to sell all holdings";
+      toast({ title: "Sell All Failed", description: errorMsg, variant: "destructive" });
     },
   });
 
@@ -653,6 +671,22 @@ function DcaBotDashboard({ bot, onBack }: { bot: AutopilotBot; onBack: () => voi
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {remainingQty > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-[#f6465d] border-[#f6465d]/30 hover:bg-[#f6465d]/10"
+              onClick={() => {
+                if (confirm(`Are you sure you want to sell ALL remaining ${bot.symbol} (${remainingQty.toFixed(6)}) at current market price?`)) {
+                  sellAllMutation.mutate();
+                }
+              }}
+              disabled={sellAllMutation.isPending}
+              data-testid="button-sell-all"
+            >
+              {sellAllMutation.isPending ? "Selling..." : "Sell All"}
+            </Button>
+          )}
           <Button
             variant={bot.isActive ? "destructive" : "default"}
             size="sm"
