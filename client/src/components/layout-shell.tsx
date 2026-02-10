@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Wallet, History, TrendingUp, Briefcase, Bell, Settings, Send, Zap } from "lucide-react";
+import { BarChart3, Wallet, History, TrendingUp, Briefcase, Bell, Settings, Send, Zap, LayoutGrid, X } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 function useTradingMode() {
   const [mode, setMode] = useState<"spot" | "futures">(() => {
@@ -33,23 +34,33 @@ function useTradingMode() {
   return { mode, toggle };
 }
 
+const primaryNavItems = [
+  { label: "Market", icon: BarChart3, href: "/" },
+  { label: "Assets", icon: Briefcase, href: "/assets" },
+  { label: "Portfolio", icon: Wallet, href: "/portfolio" },
+  { label: "Alerts", icon: Bell, href: "/alerts" },
+  { label: "Autopilot", icon: Zap, href: "/autopilot" },
+];
+
+const moreNavItems = [
+  { label: "Pay", icon: Send, href: "/pay" },
+  { label: "History", icon: History, href: "/history" },
+  { label: "Settings", icon: Settings, href: "/settings" },
+];
+
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [location] = useLocation();
   const { mode: tradingMode, toggle: setTradingMode } = useTradingMode();
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [location]);
 
   if (!user) return <>{children}</>;
 
-  const navItems = [
-    { label: "Market", icon: BarChart3, href: "/" },
-    { label: "Assets", icon: Briefcase, href: "/assets" },
-    { label: "Pay", icon: Send, href: "/pay" },
-    { label: "Portfolio", icon: Wallet, href: "/portfolio" },
-    { label: "History", icon: History, href: "/history" },
-    { label: "Alerts", icon: Bell, href: "/alerts" },
-    { label: "Autopilot", icon: Zap, href: "/autopilot" },
-    { label: "Settings", icon: Settings, href: "/settings" },
-  ];
+  const isMoreActive = moreNavItems.some((item) => location === item.href);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -78,7 +89,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
             </button>
           </div>
           <nav className="hidden md:flex items-center gap-1">
-            {navItems.map((item) => (
+            {primaryNavItems.map((item) => (
               <Link key={item.href} href={item.href}>
                 <Button
                   variant={location === item.href ? "secondary" : "ghost"}
@@ -91,6 +102,34 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
                 </Button>
               </Link>
             ))}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant={isMoreActive ? "secondary" : "ghost"}
+                  size="sm"
+                  data-testid="link-more-desktop"
+                  className="gap-2"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                  More
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-1" align="start">
+                {moreNavItems.map((item) => (
+                  <Link key={item.href} href={item.href}>
+                    <Button
+                      variant={location === item.href ? "secondary" : "ghost"}
+                      size="sm"
+                      className="w-full justify-start gap-2"
+                      data-testid={`link-${item.label.toLowerCase()}`}
+                    >
+                      <item.icon className="w-4 h-4" />
+                      {item.label}
+                    </Button>
+                  </Link>
+                ))}
+              </PopoverContent>
+            </Popover>
           </nav>
         </div>
 
@@ -111,7 +150,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
       </main>
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-[9999] bg-card border-t border-border flex items-stretch pb-safe" data-testid="nav-bottom-tabs">
-        {navItems.map((item) => {
+        {primaryNavItems.map((item) => {
           const isActive = location === item.href;
           return (
             <Link key={item.href} href={item.href} className="flex-1">
@@ -127,6 +166,41 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
             </Link>
           );
         })}
+        <div className="flex-1">
+          <Popover open={moreOpen} onOpenChange={setMoreOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className={`w-full flex flex-col items-center justify-center py-1.5 gap-0.5 transition-colors ${
+                  isMoreActive || moreOpen ? "text-[#0ecb81]" : "text-muted-foreground"
+                }`}
+                data-testid="link-mobile-more"
+              >
+                <LayoutGrid className={`w-5 h-5 ${isMoreActive || moreOpen ? "text-[#0ecb81]" : ""}`} />
+                <span className="text-[10px] font-medium leading-none">More</span>
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-44 p-1 mb-1" align="end" side="top">
+              <div className="space-y-0.5">
+                {moreNavItems.map((item) => {
+                  const isActive = location === item.href;
+                  return (
+                    <Link key={item.href} href={item.href}>
+                      <Button
+                        variant={isActive ? "secondary" : "ghost"}
+                        size="sm"
+                        className="w-full justify-start gap-2"
+                        data-testid={`link-mobile-${item.label.toLowerCase()}`}
+                      >
+                        <item.icon className="w-4 h-4" />
+                        {item.label}
+                      </Button>
+                    </Link>
+                  );
+                })}
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
       </nav>
     </div>
   );
