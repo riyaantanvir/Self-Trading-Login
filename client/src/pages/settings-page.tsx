@@ -16,14 +16,14 @@ import { useDemoRealMode } from "@/hooks/use-trading-mode";
 export default function SettingsPage() {
   const { user, logoutMutation } = useAuth();
   const { toast } = useToast();
-  const [binanceApiKey, setBinanceApiKey] = useState("");
-  const [binanceApiSecret, setBinanceApiSecret] = useState("");
+  const [krakenApiKey, setKrakenApiKey] = useState("");
+  const [krakenApiSecret, setKrakenApiSecret] = useState("");
   const [showSecret, setShowSecret] = useState(false);
 
-  const { isRealMode, effectiveBalance, hasBinanceKeys, binanceBalance, binanceError } = useDemoRealMode();
+  const { isRealMode, effectiveBalance, hasKrakenKeys, krakenBalance, krakenError } = useDemoRealMode();
 
-  const { data: binanceKeysData } = useQuery<{ hasKeys: boolean; apiKey: string }>({
-    queryKey: ["/api/user/binance-keys"],
+  const { data: krakenKeysData } = useQuery<{ hasKeys: boolean; apiKey: string }>({
+    queryKey: ["/api/user/kraken-keys"],
   });
 
   const toggleModeMutation = useMutation({
@@ -33,7 +33,7 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/user/trading-mode"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/binance/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/kraken/balance"] });
       toast({ title: "Trading mode updated" });
     },
     onError: (error: any) => {
@@ -43,17 +43,17 @@ export default function SettingsPage() {
 
   const saveKeysMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/user/binance-keys", {
-        apiKey: binanceApiKey,
-        apiSecret: binanceApiSecret,
+      await apiRequest("POST", "/api/user/kraken-keys", {
+        apiKey: krakenApiKey,
+        apiSecret: krakenApiSecret,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user/binance-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/kraken-keys"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user/trading-mode"] });
-      setBinanceApiKey("");
-      setBinanceApiSecret("");
-      toast({ title: "Binance API keys saved and verified" });
+      setKrakenApiKey("");
+      setKrakenApiSecret("");
+      toast({ title: "Kraken API keys saved and verified" });
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -62,19 +62,19 @@ export default function SettingsPage() {
 
   const deleteKeysMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("DELETE", "/api/user/binance-keys");
+      await apiRequest("DELETE", "/api/user/kraken-keys");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user/binance-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/kraken-keys"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user/trading-mode"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      toast({ title: "Binance API keys removed" });
+      toast({ title: "Kraken API keys removed" });
     },
   });
 
   if (!user) return <></>;
 
-  const hasKeys = binanceKeysData?.hasKeys || hasBinanceKeys;
+  const hasKeys = krakenKeysData?.hasKeys || hasKrakenKeys;
 
   return (
     <LayoutShell>
@@ -89,8 +89,8 @@ export default function SettingsPage() {
             <div>
               <div className="text-sm font-semibold text-foreground" data-testid="text-settings-username">{user.username}</div>
               <div className="text-xs text-muted-foreground">
-                {isRealMode && binanceBalance !== undefined
-                  ? `Binance Balance: $${binanceBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                {isRealMode && krakenBalance !== undefined
+                  ? `Kraken Balance: $${krakenBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   : `Demo Balance: $${Number(effectiveBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 }
               </div>
@@ -135,7 +135,7 @@ export default function SettingsPage() {
               <div>
                 <div className="text-sm font-semibold text-foreground">Trading Mode</div>
                 <div className="text-xs text-muted-foreground">
-                  {isRealMode ? "Real Trading (Binance)" : "Demo Trading (Simulated)"}
+                  {isRealMode ? "Real Trading (Kraken)" : "Demo Trading (Simulated)"}
                 </div>
               </div>
             </div>
@@ -156,7 +156,7 @@ export default function SettingsPage() {
             <div className="rounded-md bg-destructive/10 p-3 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
               <div className="text-xs text-destructive">
-                Real trading mode is active. All trades will be executed on Binance with real funds.
+                Real trading mode is active. All trades will be executed on Kraken with real funds.
               </div>
             </div>
           )}
@@ -166,16 +166,16 @@ export default function SettingsPage() {
           <div className="flex items-center gap-3">
             <Key className="w-5 h-5 text-muted-foreground" />
             <div>
-              <div className="text-sm font-semibold text-foreground">Binance API Keys</div>
+              <div className="text-sm font-semibold text-foreground">Kraken API Keys</div>
               <div className="text-xs text-muted-foreground">
                 {hasKeys ? "API keys configured" : "Required for real trading"}
               </div>
             </div>
           </div>
 
-          {binanceError && hasKeys && (
-            <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3" data-testid="text-binance-error">
-              <div className="text-xs text-destructive font-medium">{binanceError}</div>
+          {krakenError && hasKeys && (
+            <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3" data-testid="text-kraken-error">
+              <div className="text-xs text-destructive font-medium">{krakenError}</div>
             </div>
           )}
 
@@ -183,12 +183,12 @@ export default function SettingsPage() {
             <div className="rounded-md bg-muted p-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-green-500" />
-                <span className="text-xs text-foreground">Connected: {binanceKeysData?.apiKey}</span>
+                <span className="text-xs text-foreground">Connected: {krakenKeysData?.apiKey}</span>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                data-testid="button-remove-binance-keys"
+                data-testid="button-remove-kraken-keys"
                 onClick={() => deleteKeysMutation.mutate()}
                 disabled={deleteKeysMutation.isPending}
                 className="text-destructive"
@@ -201,25 +201,25 @@ export default function SettingsPage() {
           {!hasKeys && (
             <div className="space-y-3">
               <div className="space-y-1">
-                <Label htmlFor="binance-api-key" className="text-xs">API Key</Label>
+                <Label htmlFor="kraken-api-key" className="text-xs">API Key</Label>
                 <Input
-                  id="binance-api-key"
-                  data-testid="input-binance-api-key"
-                  placeholder="Enter your Binance API key"
-                  value={binanceApiKey}
-                  onChange={(e) => setBinanceApiKey(e.target.value)}
+                  id="kraken-api-key"
+                  data-testid="input-kraken-api-key"
+                  placeholder="Enter your Kraken API key"
+                  value={krakenApiKey}
+                  onChange={(e) => setKrakenApiKey(e.target.value)}
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="binance-api-secret" className="text-xs">API Secret</Label>
+                <Label htmlFor="kraken-api-secret" className="text-xs">Private Key</Label>
                 <div className="relative">
                   <Input
-                    id="binance-api-secret"
-                    data-testid="input-binance-api-secret"
+                    id="kraken-api-secret"
+                    data-testid="input-kraken-api-secret"
                     type={showSecret ? "text" : "password"}
-                    placeholder="Enter your Binance API secret"
-                    value={binanceApiSecret}
-                    onChange={(e) => setBinanceApiSecret(e.target.value)}
+                    placeholder="Enter your Kraken private key"
+                    value={krakenApiSecret}
+                    onChange={(e) => setKrakenApiSecret(e.target.value)}
                   />
                   <button
                     type="button"
@@ -231,9 +231,9 @@ export default function SettingsPage() {
                 </div>
               </div>
               <Button
-                data-testid="button-save-binance-keys"
+                data-testid="button-save-kraken-keys"
                 className="w-full"
-                disabled={!binanceApiKey || !binanceApiSecret || saveKeysMutation.isPending}
+                disabled={!krakenApiKey || !krakenApiSecret || saveKeysMutation.isPending}
                 onClick={() => saveKeysMutation.mutate()}
               >
                 {saveKeysMutation.isPending ? (
@@ -246,21 +246,21 @@ export default function SettingsPage() {
                 )}
               </Button>
               <div className="text-xs text-muted-foreground space-y-1">
-                <p>1. Go to Binance &gt; API Management</p>
-                <p>2. Create a new API key with Spot Trading permissions</p>
-                <p>3. Add IP restrictions if needed for security</p>
+                <p>1. Go to Kraken &gt; Settings &gt; API</p>
+                <p>2. Click "Add Key" and select Query Funds + Create & Modify Orders</p>
+                <p>3. Copy the API Key and Private Key</p>
               </div>
             </div>
           )}
         </Card>
 
-        {isRealMode && binanceBalance !== undefined && (
+        {isRealMode && krakenBalance !== undefined && (
           <Card className="p-4 space-y-2">
-            <div className="text-sm font-semibold text-foreground">Binance Account</div>
+            <div className="text-sm font-semibold text-foreground">Kraken Account</div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">USDT Available</span>
-              <span className="text-sm font-semibold text-[#0ecb81]" data-testid="text-binance-balance">
-                ${binanceBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className="text-xs text-muted-foreground">USD/USDT Available</span>
+              <span className="text-sm font-semibold text-[#0ecb81]" data-testid="text-kraken-balance">
+                ${krakenBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
           </Card>

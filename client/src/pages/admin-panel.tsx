@@ -143,7 +143,7 @@ export default function AdminPanel() {
       return res.json();
     },
     onSuccess: (_data, variables) => {
-      const label = variables.keyName === "binance_spot" ? "Binance Spot" : "Binance Futures";
+      const label = variables.keyName === "binance_spot" ? "Kraken Spot" : "Kraken Futures";
       toast({ title: "Saved", description: `${label} API keys saved successfully` });
       if (variables.keyName === "binance_spot") {
         setSpotKey("");
@@ -190,7 +190,7 @@ export default function AdminPanel() {
                 API Key Management
               </h1>
               <p className="text-xs text-muted-foreground">
-                Configure your Binance Spot and Futures API keys
+                Configure your Kraken Spot and Futures API keys
               </p>
             </div>
           </div>
@@ -210,7 +210,7 @@ export default function AdminPanel() {
                       <Key className="w-5 h-5 text-[#f0b90b]" />
                     </div>
                     <div>
-                      <div className="font-semibold text-foreground text-sm">Binance Spot API</div>
+                      <div className="font-semibold text-foreground text-sm">Kraken Spot API</div>
                       <p className="text-xs text-muted-foreground">
                         {spotData?.hasKey ? (
                           <span className="flex items-center gap-1">
@@ -288,7 +288,7 @@ export default function AdminPanel() {
                       <Shield className="w-5 h-5 text-[#8b5cf6]" />
                     </div>
                     <div>
-                      <div className="font-semibold text-foreground text-sm">Binance Futures API</div>
+                      <div className="font-semibold text-foreground text-sm">Kraken Futures API</div>
                       <p className="text-xs text-muted-foreground">
                         {futuresData?.hasKey ? (
                           <span className="flex items-center gap-1">
@@ -361,7 +361,7 @@ export default function AdminPanel() {
 
               <div className="p-3 rounded-md bg-muted/50 border border-border">
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Your API keys are stored securely. Only masked versions are displayed after saving. Make sure your Binance API keys have the correct permissions enabled (Spot/Futures trading).
+                  Your API keys are stored securely. Only masked versions are displayed after saving. Make sure your Kraken API keys have the correct permissions enabled (Spot/Futures trading).
                 </p>
               </div>
             </div>
@@ -398,7 +398,7 @@ export default function AdminPanel() {
             <CardContent className="p-4 space-y-3">
               <div className="text-sm font-medium text-foreground">Add New Coin</div>
               <p className="text-xs text-muted-foreground">
-                Enter the Binance trading pair symbol (e.g. SHIBUSDT, MATICUSDT, PEPEUSDT)
+                Enter the trading pair symbol (e.g. SHIBUSDT, MATICUSDT, PEPEUSDT)
               </p>
               <div className="flex gap-2">
                 <Input
@@ -734,7 +734,7 @@ export default function AdminPanel() {
                 <div className="min-w-0">
                   <div className="font-semibold text-foreground text-sm">API Keys</div>
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                    Manage Binance Spot and Futures API keys
+                    Manage Kraken Spot and Futures API keys
                   </p>
                 </div>
               </div>

@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, hashPassword } from "./auth";
 import { z } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
-import { getBinanceUsdtBalance, getBinanceAllBalances, placeBinanceOrder, validateBinanceCredentials, getBinanceFundingBalance, getBinanceAccountInfo, clearPlatformCache } from "./binance-trade";
+import { getKrakenUsdtBalance, getKrakenAllBalances, placeKrakenOrder, validateKrakenCredentials } from "./kraken-trade";
 
 async function sendTelegramMessage(botToken: string, chatId: string, message: string): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -1940,8 +1940,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Minimum order amount is 5 USDT" });
       }
 
-      if (user.tradingMode === "real" && user.binanceApiKey && user.binanceApiSecret) {
-        const creds = { apiKey: user.binanceApiKey, apiSecret: user.binanceApiSecret };
+      if (user.tradingMode === "real" && user.krakenApiKey && user.krakenApiSecret) {
+        const creds = { apiKey: user.krakenApiKey, apiSecret: user.krakenApiSecret };
 
         const orderType = data.orderType === "market" ? "MARKET" : "LIMIT";
         const orderOpts: any = {
@@ -1961,9 +1961,9 @@ export async function registerRoutes(
           orderOpts.quantity = data.quantity.toString();
         }
 
-        const binanceResult = await placeBinanceOrder(creds, orderOpts);
-        if (!binanceResult.success) {
-          return res.status(400).json({ message: `Binance order failed: ${binanceResult.error}` });
+        const krakenResult = await placeKrakenOrder(creds, orderOpts);
+        if (!krakenResult.success) {
+          return res.status(400).json({ message: `Kraken order failed: ${krakenResult.error}` });
         }
 
         const trade = await storage.createTrade({
@@ -1979,16 +1979,17 @@ export async function registerRoutes(
           stopPrice: data.stopPrice || null,
         });
 
+        const txid = krakenResult.data?.txid?.[0] || "";
         storage.createNotification(
           user.id,
           data.type === "buy" ? "trade_buy" : "trade_sell",
           `[REAL] ${data.type === "buy" ? "Buy" : "Sell"} ${data.symbol}`,
-          `[Binance] ${data.type === "buy" ? "Bought" : "Sold"} ${data.quantity} ${data.symbol} at $${data.price.toLocaleString()} (Order: ${binanceResult.data?.orderId})`,
-          JSON.stringify({ symbol: data.symbol, type: data.type, quantity: data.quantity, price: data.price, total, binanceOrderId: binanceResult.data?.orderId, mode: "real" })
+          `[Kraken] ${data.type === "buy" ? "Bought" : "Sold"} ${data.quantity} ${data.symbol} at $${data.price.toLocaleString()} (Order: ${txid})`,
+          JSON.stringify({ symbol: data.symbol, type: data.type, quantity: data.quantity, price: data.price, total, krakenTxid: txid, mode: "real" })
         ).catch(() => {});
 
         const updatedUser = await storage.getUser(user.id);
-        return res.status(201).json({ trade, user: updatedUser, binanceOrderId: binanceResult.data?.orderId, mode: "real" });
+        return res.status(201).json({ trade, user: updatedUser, krakenTxid: txid, mode: "real" });
       }
 
       if (data.orderType !== "market") {
@@ -2406,7 +2407,7 @@ export async function registerRoutes(
     const user = await storage.getUser(req.user!.id);
     res.json({
       tradingMode: user?.tradingMode || "demo",
-      hasBinanceKeys: !!(user?.binanceApiKey && user?.binanceApiSecret),
+      hasKrakenKeys: !!(user?.krakenApiKey && user?.krakenApiSecret),
     });
   });
 
@@ -2418,8 +2419,8 @@ export async function registerRoutes(
 
     const user = await storage.getUser(req.user!.id);
     if (parsed.data.tradingMode === "real") {
-      if (!user?.binanceApiKey || !user?.binanceApiSecret) {
-        return res.status(400).json({ message: "Please configure Binance API keys first" });
+      if (!user?.krakenApiKey || !user?.krakenApiSecret) {
+        return res.status(400).json({ message: "Please configure Kraken API keys first" });
       }
     }
 
@@ -2427,7 +2428,7 @@ export async function registerRoutes(
     res.json({ success: true, tradingMode: parsed.data.tradingMode });
   });
 
-  app.post("/api/user/binance-keys", async (req, res) => {
+  app.post("/api/user/kraken-keys", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const schema = z.object({
       apiKey: z.string().min(1),
@@ -2436,16 +2437,16 @@ export async function registerRoutes(
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "All fields are required" });
 
-    const validation = await validateBinanceCredentials({
+    const validation = await validateKrakenCredentials({
       apiKey: parsed.data.apiKey,
       apiSecret: parsed.data.apiSecret,
     });
 
     if (!validation.valid) {
-      return res.status(400).json({ message: `Invalid Binance credentials: ${validation.error}` });
+      return res.status(400).json({ message: `Invalid Kraken credentials: ${validation.error}` });
     }
 
-    await storage.updateBinanceCredentials(
+    await storage.updateKrakenCredentials(
       req.user!.id,
       parsed.data.apiKey,
       parsed.data.apiSecret
@@ -2453,101 +2454,63 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
-  app.delete("/api/user/binance-keys", async (req, res) => {
+  app.delete("/api/user/kraken-keys", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    const user = await storage.getUser(req.user!.id);
-    if (user?.binanceApiKey) clearPlatformCache(user.binanceApiKey);
-    await storage.updateBinanceCredentials(req.user!.id, "", "");
+    await storage.updateKrakenCredentials(req.user!.id, "", "");
     await storage.updateTradingMode(req.user!.id, "demo");
     res.json({ success: true });
   });
 
-  app.get("/api/user/binance-keys", async (req, res) => {
+  app.get("/api/user/kraken-keys", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const user = await storage.getUser(req.user!.id);
     if (!user) return res.sendStatus(404);
     res.json({
-      hasKeys: !!(user.binanceApiKey && user.binanceApiSecret),
-      apiKey: user.binanceApiKey ? `${user.binanceApiKey.slice(0, 6)}...${user.binanceApiKey.slice(-4)}` : "",
+      hasKeys: !!(user.krakenApiKey && user.krakenApiSecret),
+      apiKey: user.krakenApiKey ? `${user.krakenApiKey.slice(0, 6)}...${user.krakenApiKey.slice(-4)}` : "",
     });
   });
 
-  app.get("/api/binance/balance", async (req, res) => {
+  app.get("/api/kraken/balance", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const user = await storage.getUser(req.user!.id);
-    if (!user?.binanceApiKey || !user?.binanceApiSecret) {
-      return res.status(400).json({ message: "Binance API keys not configured" });
+    if (!user?.krakenApiKey || !user?.krakenApiSecret) {
+      return res.status(400).json({ message: "Kraken API keys not configured" });
     }
 
-    const creds = { apiKey: user.binanceApiKey, apiSecret: user.binanceApiSecret };
+    const creds = { apiKey: user.krakenApiKey, apiSecret: user.krakenApiSecret };
 
-    const spotResult = await getBinanceUsdtBalance(creds);
-    if (!spotResult.success) {
-      const errorMsg = spotResult.error || "Failed to connect to Binance";
-      const isGeoBlocked = errorMsg.includes('451') || errorMsg.includes('restricted location') || errorMsg.includes('Geo-restricted');
-      console.error(`[Binance] Balance fetch failed: ${errorMsg}`);
+    const result = await getKrakenUsdtBalance(creds);
+    if (!result.success) {
+      console.error(`[Kraken] Balance fetch failed: ${result.error}`);
       return res.json({
         balance: 0,
-        spotBalance: 0,
-        fundingBalance: 0,
-        error: isGeoBlocked
-          ? "Binance.com API is geo-restricted from this server location. If you use Binance.US, please enter Binance.US API keys instead."
-          : errorMsg
+        error: result.error || "Failed to connect to Kraken"
       });
     }
 
-    let spotBalance = spotResult.balance || 0;
+    const balance = result.balance || 0;
+    console.log(`[Kraken] Balance: ${balance}`);
 
-    let fundingBalance = 0;
-    try {
-      const fundingResult = await getBinanceFundingBalance(creds);
-      if (fundingResult.success && fundingResult.balances) {
-        const usdtFunding = fundingResult.balances.find((b: any) => b.asset === "USDT");
-        if (usdtFunding) {
-          fundingBalance = parseFloat(usdtFunding.free || "0");
-        }
-      }
-    } catch (e) {
-      console.log("[Binance] Funding balance fetch failed, using spot only");
-    }
-
-    const totalBalance = spotBalance + fundingBalance;
-    console.log(`[Binance] Balance breakdown - Spot: ${spotBalance}, Funding: ${fundingBalance}, Total: ${totalBalance}`);
-
-    res.json({ balance: totalBalance, spotBalance, fundingBalance });
+    res.json({ balance });
   });
 
-  app.get("/api/binance/balances", async (req, res) => {
+  app.get("/api/kraken/balances", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const user = await storage.getUser(req.user!.id);
-    if (!user?.binanceApiKey || !user?.binanceApiSecret) {
-      return res.status(400).json({ message: "Binance API keys not configured" });
+    if (!user?.krakenApiKey || !user?.krakenApiSecret) {
+      return res.status(400).json({ message: "Kraken API keys not configured" });
     }
 
-    const creds = { apiKey: user.binanceApiKey, apiSecret: user.binanceApiSecret };
+    const creds = { apiKey: user.krakenApiKey, apiSecret: user.krakenApiSecret };
 
-    const spotResult = await getBinanceAllBalances(creds);
+    const result = await getKrakenAllBalances(creds);
     const balances: { currency: string; available: number; balance: number; wallet: string }[] = [];
 
-    if (spotResult.success && spotResult.balances) {
-      spotResult.balances.forEach(b => {
+    if (result.success && result.balances) {
+      result.balances.forEach(b => {
         balances.push({ ...b, wallet: "spot" });
       });
-    }
-
-    try {
-      const fundingResult = await getBinanceFundingBalance(creds);
-      if (fundingResult.success && fundingResult.balances) {
-        fundingResult.balances.forEach((b: any) => {
-          const free = parseFloat(b.free || "0");
-          const locked = parseFloat(b.locked || "0");
-          if (free > 0 || locked > 0) {
-            balances.push({ currency: b.asset, available: free, balance: free + locked, wallet: "funding" });
-          }
-        });
-      }
-    } catch (e) {
-      console.log("[Binance] Funding balances fetch failed, showing spot only");
     }
 
     res.json({ balances });

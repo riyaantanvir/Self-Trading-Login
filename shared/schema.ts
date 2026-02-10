@@ -19,6 +19,8 @@ export const users = pgTable("users", {
   kucoinPassphrase: text("kucoin_passphrase").default(""),
   binanceApiKey: text("binance_api_key").default(""),
   binanceApiSecret: text("binance_api_secret").default(""),
+  krakenApiKey: text("kraken_api_key").default(""),
+  krakenApiSecret: text("kraken_api_secret").default(""),
 });
 
 export const trades = pgTable("trades", {

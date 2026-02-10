@@ -9,6 +9,7 @@ export interface IStorage {
   updateUserBalance(id: number, balance: number): Promise<void>;
   updateTradingMode(id: number, tradingMode: string): Promise<void>;
   updateBinanceCredentials(id: number, apiKey: string, apiSecret: string): Promise<void>;
+  updateKrakenCredentials(id: number, apiKey: string, apiSecret: string): Promise<void>;
   getAllUsers(): Promise<User[]>;
 
   getTrades(userId: number): Promise<Trade[]>;
@@ -105,6 +106,10 @@ export class DatabaseStorage implements IStorage {
 
   async updateBinanceCredentials(id: number, apiKey: string, apiSecret: string): Promise<void> {
     await db.update(users).set({ binanceApiKey: apiKey, binanceApiSecret: apiSecret }).where(eq(users.id, id));
+  }
+
+  async updateKrakenCredentials(id: number, apiKey: string, apiSecret: string): Promise<void> {
+    await db.update(users).set({ krakenApiKey: apiKey, krakenApiSecret: apiSecret }).where(eq(users.id, id));
   }
 
   async getAllUsers(): Promise<User[]> {

@@ -1,0 +1,200 @@
+import { createHmac, createHash } from "crypto";
+
+const KRAKEN_API_URL = "https://api.kraken.com";
+
+export interface KrakenCredentials {
+  apiKey: string;
+  apiSecret: string;
+}
+
+function getKrakenSignature(urlPath: string, data: Record<string, string>, secret: string): string {
+  const postData = new URLSearchParams(data).toString();
+  const encoded = Buffer.from(data.nonce + postData);
+  const sha256Hash = createHash("sha256").update(encoded).digest();
+  const message = Buffer.concat([Buffer.from(urlPath), sha256Hash]);
+  const hmac = createHmac("sha512", Buffer.from(secret, "base64"));
+  return hmac.update(message).digest("base64");
+}
+
+async function krakenRequest(
+  creds: KrakenCredentials,
+  urlPath: string,
+  params: Record<string, string> = {}
+): Promise<{ success: boolean; result?: any; error?: string }> {
+  try {
+    const data: Record<string, string> = {
+      nonce: Date.now().toString(),
+      ...params,
+    };
+
+    const signature = getKrakenSignature(urlPath, data, creds.apiSecret);
+    const postData = new URLSearchParams(data).toString();
+
+    const res = await fetch(KRAKEN_API_URL + urlPath, {
+      method: "POST",
+      headers: {
+        "API-Key": creds.apiKey,
+        "API-Sign": signature,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: postData,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`[Kraken] HTTP ${res.status}: ${text.substring(0, 300)}`);
+      return { success: false, error: `HTTP ${res.status}: ${text.substring(0, 100)}` };
+    }
+
+    const json = await res.json() as any;
+
+    if (json.error && json.error.length > 0) {
+      const errorMsg = json.error.join(", ");
+      console.error(`[Kraken] API error: ${errorMsg}`);
+      return { success: false, error: errorMsg };
+    }
+
+    return { success: true, result: json.result };
+  } catch (err: any) {
+    console.error(`[Kraken] Request error (${urlPath}):`, err.message);
+    return { success: false, error: err.message || "Network error" };
+  }
+}
+
+const SYMBOL_MAP: Record<string, string> = {
+  BTC: "XBT",
+};
+
+function toKrakenSymbol(symbol: string): string {
+  const base = symbol.replace(/USDT$/, "").replace(/USD$/, "");
+  const quote = symbol.endsWith("USDT") ? "USDT" : "USD";
+  const krakenBase = SYMBOL_MAP[base] || base;
+  return `${krakenBase}${quote}`;
+}
+
+function fromKrakenAsset(asset: string): string {
+  if (asset === "XXBT") return "BTC";
+  if (asset === "XETH") return "ETH";
+  if (asset === "ZUSD") return "USD";
+  if (asset === "ZEUR") return "EUR";
+  if (asset.startsWith("X") && asset.length === 4) return asset.substring(1);
+  if (asset.startsWith("Z") && asset.length === 4) return asset.substring(1);
+  return asset;
+}
+
+export async function getKrakenBalance(
+  creds: KrakenCredentials
+): Promise<{ success: boolean; balances?: Record<string, string>; error?: string }> {
+  const result = await krakenRequest(creds, "/0/private/Balance");
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  console.log("[Kraken] Balance result:", JSON.stringify(result.result));
+  return { success: true, balances: result.result };
+}
+
+export async function getKrakenUsdtBalance(
+  creds: KrakenCredentials
+): Promise<{ success: boolean; balance?: number; error?: string }> {
+  const result = await getKrakenBalance(creds);
+  if (!result.success || !result.balances) {
+    return { success: false, error: result.error };
+  }
+  let total = 0;
+  const usdtBalance = result.balances["USDT"] || result.balances["usdt"];
+  const usdBalance = result.balances["ZUSD"] || result.balances["USD"] || result.balances["zusd"];
+  if (usdtBalance) total += parseFloat(usdtBalance);
+  if (usdBalance) total += parseFloat(usdBalance);
+  return { success: true, balance: total };
+}
+
+export async function getKrakenAllBalances(
+  creds: KrakenCredentials
+): Promise<{ success: boolean; balances?: { currency: string; available: number; balance: number }[]; error?: string }> {
+  const result = await getKrakenBalance(creds);
+  if (!result.success || !result.balances) {
+    return { success: false, error: result.error };
+  }
+  const balances = Object.entries(result.balances)
+    .filter(([, val]) => parseFloat(val) > 0)
+    .map(([asset, val]) => ({
+      currency: fromKrakenAsset(asset),
+      available: parseFloat(val),
+      balance: parseFloat(val),
+    }));
+  return { success: true, balances };
+}
+
+export async function placeKrakenOrder(
+  creds: KrakenCredentials,
+  options: {
+    symbol: string;
+    side: "BUY" | "SELL";
+    type: "MARKET" | "LIMIT";
+    quantity?: string;
+    quoteOrderQty?: string;
+    price?: string;
+  }
+): Promise<{ success: boolean; data?: { txid: string[]; description: string }; error?: string }> {
+  const pair = toKrakenSymbol(options.symbol);
+  const params: Record<string, string> = {
+    pair,
+    type: options.side.toLowerCase(),
+    ordertype: options.type.toLowerCase(),
+  };
+
+  if (options.quantity) {
+    params.volume = options.quantity;
+  }
+
+  if (options.type === "LIMIT" && options.price) {
+    params.price = options.price;
+  }
+
+  if (options.type === "MARKET" && options.side === "BUY" && options.quoteOrderQty) {
+    params.volume = options.quoteOrderQty;
+    params.oflags = "viqc";
+  }
+
+  console.log(`[Kraken] Placing order: ${JSON.stringify(params)}`);
+
+  const result = await krakenRequest(creds, "/0/private/AddOrder", params);
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+
+  return {
+    success: true,
+    data: {
+      txid: result.result?.txid || [],
+      description: result.result?.descr?.order || "",
+    },
+  };
+}
+
+export async function getKrakenOrderDetail(
+  creds: KrakenCredentials,
+  txid: string
+): Promise<{ success: boolean; data?: any; error?: string }> {
+  const result = await krakenRequest(creds, "/0/private/QueryOrders", {
+    txid,
+  });
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result.result };
+}
+
+export async function validateKrakenCredentials(
+  creds: KrakenCredentials
+): Promise<{ valid: boolean; error?: string }> {
+  console.log("[Kraken] Validating credentials...");
+  const result = await krakenRequest(creds, "/0/private/Balance");
+  if (!result.success) {
+    console.error("[Kraken] Validation failed:", result.error);
+    return { valid: false, error: result.error };
+  }
+  const assetCount = Object.keys(result.result || {}).length;
+  console.log(`[Kraken] Validation successful, ${assetCount} assets found`);
+  return { valid: true };
+}

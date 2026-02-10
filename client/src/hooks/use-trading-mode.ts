@@ -3,10 +3,10 @@ import { useAuth } from "./use-auth";
 
 interface TradingModeData {
   tradingMode: string;
-  hasBinanceKeys: boolean;
+  hasKrakenKeys: boolean;
 }
 
-interface BinanceBalanceData {
+interface KrakenBalanceData {
   balance: number;
   error?: string;
 }
@@ -21,22 +21,22 @@ export function useDemoRealMode() {
 
   const isRealMode = tradingModeData?.tradingMode === "real";
 
-  const { data: binanceBalanceData } = useQuery<BinanceBalanceData>({
-    queryKey: ["/api/binance/balance"],
-    enabled: isRealMode && tradingModeData?.hasBinanceKeys === true,
+  const { data: krakenBalanceData } = useQuery<KrakenBalanceData>({
+    queryKey: ["/api/kraken/balance"],
+    enabled: isRealMode && tradingModeData?.hasKrakenKeys === true,
     refetchInterval: 15000,
   });
 
-  const effectiveBalance = isRealMode && binanceBalanceData?.balance !== undefined
-    ? binanceBalanceData.balance
+  const effectiveBalance = isRealMode && krakenBalanceData?.balance !== undefined
+    ? krakenBalanceData.balance
     : Number(user?.balance ?? 0);
 
   return {
     isRealMode,
     effectiveBalance,
     tradingMode: tradingModeData?.tradingMode || "demo",
-    hasBinanceKeys: tradingModeData?.hasBinanceKeys || false,
-    binanceBalance: binanceBalanceData?.balance,
-    binanceError: binanceBalanceData?.error,
+    hasKrakenKeys: tradingModeData?.hasKrakenKeys || false,
+    krakenBalance: krakenBalanceData?.balance,
+    krakenError: krakenBalanceData?.error,
   };
 }
