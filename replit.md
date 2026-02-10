@@ -48,6 +48,10 @@ The platform is built with a React, Vite, TypeScript, TailwindCSS, and shadcn/ui
     -   Kraken uses different pair formats (e.g., XBTUSDT for Bitcoin). The `mapSymbolToKraken()` function in `kraken-trade.ts` handles symbol translation.
 
 ## Recent Changes
+- **2026-02-10:** Made Assets, Portfolio, and PNL pages fully mode-aware:
+  - Real mode: Shows Kraken crypto holdings, hides demo PNL/Avg Buy data, uses USD labels, hides Futures tab
+  - Demo mode: Unchanged behavior with full PNL tracking, USDT labels, and all features
+  - PNL page shows informational message in Real mode directing users to switch to Demo for PNL analysis
 - **2026-02-10:** Migrated real trading from Binance to Kraken API (Binance.com geo-blocked from US servers with HTTP 451). Market data still from Binance WebSocket (public, not geo-blocked).
 - **2026-02-10:** Fixed error detection bug: Changed `json.code && json.msg` checks to `json.msg !== undefined` with `!res.ok` checks.
 

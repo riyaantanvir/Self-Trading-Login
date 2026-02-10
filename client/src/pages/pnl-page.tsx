@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { usePnlHistory, useTodayPnl } from "@/hooks/use-trades";
 import { useAuth } from "@/hooks/use-auth";
+import { useDemoRealMode } from "@/hooks/use-trading-mode";
 import { LayoutShell } from "@/components/layout-shell";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ type ViewMode = "chart" | "calendar";
 
 export default function PnlPage() {
   const { user } = useAuth();
+  const { isRealMode } = useDemoRealMode();
   const { data: pnlHistory, isLoading: loadingHistory } = usePnlHistory();
   const { data: todayPnlData } = useTodayPnl();
   const [, navigate] = useLocation();
@@ -103,6 +105,31 @@ export default function PnlPage() {
     const padding = (max - min) * 0.1 || 100;
     return { min: min - padding, max: max + padding };
   }, [netWorthData]);
+
+  if (isRealMode) {
+    return (
+      <LayoutShell>
+        <div className="p-4 md:p-6 max-w-3xl mx-auto">
+          <div className="flex items-center gap-3 mb-6">
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={() => navigate("/assets")}
+              data-testid="button-back-to-assets"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <h1 className="text-xl font-bold text-foreground" data-testid="text-pnl-title">PNL Analysis</h1>
+          </div>
+          <Card>
+            <CardContent className="p-8 text-center">
+              <p className="text-muted-foreground text-sm">PNL tracking is available in Demo mode. Switch to Demo mode in Settings to view your simulated trading performance.</p>
+            </CardContent>
+          </Card>
+        </div>
+      </LayoutShell>
+    );
+  }
 
   if (loadingHistory) {
     return (

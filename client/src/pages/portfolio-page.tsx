@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { usePortfolio, useTickers, useCreateTrade } from "@/hooks/use-trades";
+import { useDemoRealMode } from "@/hooks/use-trading-mode";
 import { LayoutShell } from "@/components/layout-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Loader2, TrendingUp, TrendingDown, Wallet } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 interface Ticker {
   symbol: string;
@@ -29,7 +31,14 @@ interface PortfolioItem {
 export default function PortfolioPage() {
   const { data: holdings, isLoading: loadingPortfolio } = usePortfolio();
   const { data: tickers, isLoading: loadingTickers } = useTickers();
+  const { isRealMode, effectiveBalance } = useDemoRealMode();
   const createTrade = useCreateTrade();
+
+  const { data: krakenBalancesData } = useQuery<{ balances: { currency: string; available: number; balance: number; wallet: string }[] }>({
+    queryKey: ["/api/kraken/balances"],
+    enabled: isRealMode,
+    refetchInterval: 15000,
+  });
   const [sellTarget, setSellTarget] = useState<{
     symbol: string;
     coinName: string;
@@ -55,16 +64,40 @@ export default function PortfolioPage() {
     });
   }
 
-  const portfolioItems = (holdings as PortfolioItem[] || []).map((h) => {
-    const currentPrice = tickerMap[h.symbol] || 0;
-    const currentValue = h.quantity * currentPrice;
-    const costBasis = h.quantity * h.avgBuyPrice;
-    const pnl = currentValue - costBasis;
-    const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
-    return { ...h, currentPrice, currentValue, pnl, pnlPercent };
-  });
+  const krakenHoldings = useMemo(() => {
+    if (!isRealMode || !krakenBalancesData?.balances) return [];
+    return krakenBalancesData.balances
+      .filter((b) => !["USDT", "USDC", "USD"].includes(b.currency) && b.balance > 0)
+      .map((b) => {
+        const symbol = `${b.currency}USDT`;
+        const currentPrice = tickerMap[symbol] || 0;
+        const currentValue = b.balance * currentPrice;
+        return {
+          id: 0,
+          userId: 0,
+          symbol,
+          quantity: b.balance,
+          avgBuyPrice: 0,
+          currentPrice,
+          currentValue,
+          pnl: 0,
+          pnlPercent: 0,
+        };
+      });
+  }, [isRealMode, krakenBalancesData, tickerMap]);
 
-  const totalValue = portfolioItems.reduce((sum, i) => sum + i.currentValue, 0);
+  const portfolioItems = isRealMode
+    ? krakenHoldings
+    : (holdings as PortfolioItem[] || []).map((h) => {
+        const currentPrice = tickerMap[h.symbol] || 0;
+        const currentValue = h.quantity * currentPrice;
+        const costBasis = h.quantity * h.avgBuyPrice;
+        const pnl = currentValue - costBasis;
+        const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+        return { ...h, currentPrice, currentValue, pnl, pnlPercent };
+      });
+
+  const totalValue = portfolioItems.reduce((sum, i) => sum + i.currentValue, 0) + (isRealMode ? effectiveBalance : 0);
   const totalPnL = portfolioItems.reduce((sum, i) => sum + i.pnl, 0);
 
   const handleSellAll = () => {
@@ -89,7 +122,7 @@ export default function PortfolioPage() {
       <div className="p-4 md:p-6 max-w-7xl mx-auto">
         <h1 className="text-2xl font-bold text-foreground mb-6" data-testid="text-page-title">Portfolio</h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+        <div className={`grid grid-cols-1 ${isRealMode ? "md:grid-cols-2" : "md:grid-cols-3"} gap-4 mb-6`}>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total Value</CardTitle>
@@ -101,6 +134,7 @@ export default function PortfolioPage() {
               </div>
             </CardContent>
           </Card>
+          {!isRealMode && (
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Total P&L</CardTitle>
@@ -112,6 +146,7 @@ export default function PortfolioPage() {
               </div>
             </CardContent>
           </Card>
+          )}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">Holdings</CardTitle>
@@ -131,10 +166,10 @@ export default function PortfolioPage() {
                 <tr className="border-b border-border bg-muted/30">
                   <th className="text-left p-3 text-xs text-muted-foreground font-medium">Asset</th>
                   <th className="text-right p-3 text-xs text-muted-foreground font-medium">Quantity</th>
-                  <th className="text-right p-3 text-xs text-muted-foreground font-medium">Avg. Buy</th>
+                  {!isRealMode && <th className="text-right p-3 text-xs text-muted-foreground font-medium">Avg. Buy</th>}
                   <th className="text-right p-3 text-xs text-muted-foreground font-medium">Current</th>
                   <th className="text-right p-3 text-xs text-muted-foreground font-medium">Value</th>
-                  <th className="text-right p-3 text-xs text-muted-foreground font-medium">P&L</th>
+                  {!isRealMode && <th className="text-right p-3 text-xs text-muted-foreground font-medium">P&L</th>}
                   <th className="text-center p-3 text-xs text-muted-foreground font-medium">Action</th>
                 </tr>
               </thead>
@@ -143,15 +178,16 @@ export default function PortfolioPage() {
                   portfolioItems.map((item) => {
                     const coinName = item.symbol.replace("USDT", "");
                     return (
-                      <tr key={item.id} className="border-b border-border/50" data-testid={`row-portfolio-${item.symbol}`}>
+                      <tr key={item.symbol} className="border-b border-border/50" data-testid={`row-portfolio-${item.symbol}`}>
                         <td className="p-3">
                           <span className="font-semibold text-foreground">{coinName}</span>
-                          <span className="text-xs text-muted-foreground">/USDT</span>
+                          <span className="text-xs text-muted-foreground">/{isRealMode ? "USD" : "USDT"}</span>
                         </td>
                         <td className="p-3 text-right font-mono text-foreground">{item.quantity.toFixed(6)}</td>
-                        <td className="p-3 text-right font-mono text-muted-foreground">${item.avgBuyPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
+                        {!isRealMode && <td className="p-3 text-right font-mono text-muted-foreground">${item.avgBuyPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>}
                         <td className="p-3 text-right font-mono text-foreground">${item.currentPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                         <td className="p-3 text-right font-mono font-semibold text-foreground">${item.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                        {!isRealMode && (
                         <td className="p-3 text-right">
                           <div className={`font-mono font-medium ${item.pnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
                             {item.pnl >= 0 ? "+" : ""}${item.pnl.toFixed(2)}
@@ -160,8 +196,9 @@ export default function PortfolioPage() {
                             {item.pnlPercent >= 0 ? "+" : ""}{item.pnlPercent.toFixed(2)}%
                           </div>
                         </td>
+                        )}
                         <td className="p-3 text-center">
-                          {item.quantity > 0 ? (
+                          {item.quantity > 0 && !isRealMode ? (
                             <Button
                               size="sm"
                               variant="destructive"
@@ -203,18 +240,20 @@ export default function PortfolioPage() {
               const coinName = item.symbol.replace("USDT", "");
               return (
                 <div
-                  key={item.id}
+                  key={item.symbol}
                   className="rounded-md border border-border bg-card p-3"
                   data-testid={`card-portfolio-${item.symbol}`}
                 >
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <div>
                       <span className="font-semibold text-foreground">{coinName}</span>
-                      <span className="text-xs text-muted-foreground">/USDT</span>
+                      <span className="text-xs text-muted-foreground">/{isRealMode ? "USD" : "USDT"}</span>
                     </div>
+                    {!isRealMode && (
                     <div className={`font-mono text-sm font-semibold ${item.pnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
                       {item.pnl >= 0 ? "+" : ""}{item.pnlPercent.toFixed(2)}%
                     </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2">
                     <div className="flex justify-between gap-1">
@@ -225,6 +264,8 @@ export default function PortfolioPage() {
                       <span className="text-muted-foreground">Value</span>
                       <span className="font-mono font-semibold text-foreground">${item.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
+                    {!isRealMode && (
+                    <>
                     <div className="flex justify-between gap-1">
                       <span className="text-muted-foreground">Avg Buy</span>
                       <span className="font-mono text-muted-foreground">${item.avgBuyPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
@@ -235,8 +276,10 @@ export default function PortfolioPage() {
                         {item.pnl >= 0 ? "+" : ""}${item.pnl.toFixed(2)}
                       </span>
                     </div>
+                    </>
+                    )}
                   </div>
-                  {item.quantity > 0 && (
+                  {item.quantity > 0 && !isRealMode && (
                     <Button
                       size="sm"
                       variant="destructive"

@@ -99,6 +99,12 @@ export default function AssetsPage() {
   const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState<"overview" | "futures">("overview");
 
+  const { data: krakenBalancesData } = useQuery<{ balances: { currency: string; available: number; balance: number; wallet: string }[] }>({
+    queryKey: ["/api/kraken/balances"],
+    enabled: isRealMode,
+    refetchInterval: 15000,
+  });
+
   const { data: futuresWalletData } = useQuery({
     queryKey: ["/api/futures/wallet"],
   });
@@ -119,7 +125,36 @@ export default function AssetsPage() {
     return map;
   }, [tickers]);
 
+  const krakenHoldingsItems = useMemo(() => {
+    if (!isRealMode || !krakenBalancesData?.balances) return [];
+    return krakenBalancesData.balances
+      .filter((b) => !["USDT", "USDC", "USD"].includes(b.currency) && b.balance > 0)
+      .map((b) => {
+        const symbol = `${b.currency}USDT`;
+        const ticker = tickerMap[symbol];
+        const currentPrice = ticker ? parseFloat(ticker.lastPrice) : 0;
+        const currentValue = b.balance * currentPrice;
+        const coinName = b.currency;
+        return {
+          id: 0,
+          userId: 0,
+          symbol,
+          quantity: b.balance,
+          coinName,
+          fullName: COIN_NAMES[coinName] || coinName,
+          colorClass: COIN_COLORS[coinName] || "bg-muted",
+          currentPrice,
+          currentValue,
+          todayPnl: 0,
+          todayPnlPercent: 0,
+          avgBuyPrice: 0,
+        };
+      })
+      .sort((a, b) => b.currentValue - a.currentValue);
+  }, [isRealMode, krakenBalancesData, tickerMap]);
+
   const portfolioItems = useMemo(() => {
+    if (isRealMode) return krakenHoldingsItems;
     if (!holdings) return [];
     return (holdings as PortfolioItem[])
       .filter((h) => h.quantity > 0)
@@ -145,7 +180,7 @@ export default function AssetsPage() {
         };
       })
       .sort((a, b) => b.currentValue - a.currentValue);
-  }, [holdings, tickerMap, todayPnlData]);
+  }, [isRealMode, krakenHoldingsItems, holdings, tickerMap, todayPnlData]);
 
   const filteredItems = useMemo(() => {
     if (!search) return portfolioItems;
@@ -165,6 +200,7 @@ export default function AssetsPage() {
   );
 
   const futuresUnrealizedPnl = useMemo(() => {
+    if (isRealMode) return 0;
     const openPositions = futuresPositions.filter((p: any) => p.status === "open");
     return openPositions.reduce((sum: number, pos: any) => {
       const ticker = tickerMap[pos.symbol];
@@ -176,12 +212,12 @@ export default function AssetsPage() {
         : (entry - currentPrice) * qty;
       return sum + pnl;
     }, 0);
-  }, [futuresPositions, tickerMap]);
+  }, [futuresPositions, tickerMap, isRealMode]);
 
-  const totalEstValue = cashBalance + totalHoldingsValue + futuresBalance + futuresUnrealizedPnl;
+  const totalEstValue = cashBalance + totalHoldingsValue + (isRealMode ? 0 : futuresBalance + futuresUnrealizedPnl);
 
-  const totalTodayPnl = todayPnlData?.totalPnl ?? 0;
-  const startOfDayValue = todayPnlData?.startOfDayValue ?? totalEstValue;
+  const totalTodayPnl = isRealMode ? 0 : (todayPnlData?.totalPnl ?? 0);
+  const startOfDayValue = isRealMode ? totalEstValue : (todayPnlData?.startOfDayValue ?? totalEstValue);
   const totalTodayPnlPercent =
     startOfDayValue > 0
       ? (totalTodayPnl / startOfDayValue) * 100
@@ -223,6 +259,7 @@ export default function AssetsPage() {
           >
             Overview
           </button>
+          {!isRealMode && (
           <button
             className={`text-base font-semibold pb-2 whitespace-nowrap ${activeTab === "futures" ? "text-foreground border-b-2 border-[#f0b90b]" : "text-muted-foreground"}`}
             onClick={() => setActiveTab("futures")}
@@ -230,6 +267,7 @@ export default function AssetsPage() {
           >
             Futures
           </button>
+          )}
           <button
             className="text-base text-muted-foreground pb-2 whitespace-nowrap cursor-not-allowed opacity-50"
             disabled
@@ -246,7 +284,7 @@ export default function AssetsPage() {
           </button>
         </div>
 
-        {activeTab === "futures" ? (
+        {activeTab === "futures" && !isRealMode ? (
           <FuturesAssetsContent
             futuresBalance={futuresBalance}
             futuresPositions={futuresPositions}
@@ -279,11 +317,12 @@ export default function AssetsPage() {
             <span className="text-2xl sm:text-3xl font-bold text-foreground font-mono" data-testid="text-total-value">
               {formatAmount(totalEstValue)}
             </span>
-            <span className="text-base sm:text-lg text-muted-foreground">USDT</span>
+            <span className="text-base sm:text-lg text-muted-foreground">{isRealMode ? "USD" : "USDT"}</span>
           </div>
           <div className="text-sm text-muted-foreground mb-1" data-testid="text-total-usd">
             {balanceVisible ? `~ $${formatAmount(totalEstValue)}` : "~ $****"}
           </div>
+          {!isRealMode && (
           <div
             className="flex flex-wrap items-center gap-1 text-sm cursor-pointer group"
             onClick={() => navigate("/pnl")}
@@ -299,6 +338,7 @@ export default function AssetsPage() {
                 : "****"}
             </span>
           </div>
+          )}
         </div>
 
         <div className="flex gap-3 mb-8">
@@ -345,12 +385,12 @@ export default function AssetsPage() {
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full bg-[#26A17B] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                <div className={`w-9 h-9 rounded-full ${isRealMode ? "bg-[#2775CA]" : "bg-[#26A17B]"} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
                   $
                 </div>
                 <div>
-                  <div className="font-semibold text-foreground">USDT</div>
-                  <div className="text-xs text-muted-foreground">Tether</div>
+                  <div className="font-semibold text-foreground">{isRealMode ? "USD" : "USDT"}</div>
+                  <div className="text-xs text-muted-foreground">{isRealMode ? "Kraken Balance" : "Tether"}</div>
                 </div>
               </div>
               <div className="text-right">
@@ -358,7 +398,7 @@ export default function AssetsPage() {
                   {formatQuantity(cashBalance)}
                 </div>
                 <div className="text-xs text-muted-foreground font-mono">
-                  {formatAmount(cashBalance)} USDT
+                  {formatAmount(cashBalance)} {isRealMode ? "USD" : "USDT"}
                 </div>
               </div>
             </div>
@@ -395,6 +435,7 @@ export default function AssetsPage() {
                       <div className="text-xs text-muted-foreground">
                         {item.fullName}
                       </div>
+                      {!isRealMode && (
                       <div className="flex flex-col mt-1 min-w-0">
                         <div className="flex items-center gap-1 sm:gap-2 text-[10px] sm:text-xs flex-wrap">
                           <span className="text-muted-foreground">PNL</span>
@@ -415,6 +456,7 @@ export default function AssetsPage() {
                           </span>
                         </div>
                       </div>
+                      )}
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
@@ -422,7 +464,7 @@ export default function AssetsPage() {
                       {formatQuantity(item.quantity)}
                     </div>
                     <div className="text-xs text-muted-foreground font-mono">
-                      {formatAmount(item.currentValue)} USDT
+                      {formatAmount(item.currentValue)} {isRealMode ? "USD" : "USDT"}
                     </div>
                   </div>
                 </div>
