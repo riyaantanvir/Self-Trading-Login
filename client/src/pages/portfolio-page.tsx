@@ -47,22 +47,15 @@ export default function PortfolioPage() {
     currentValue: number;
   } | null>(null);
 
-  if (loadingPortfolio || loadingTickers) {
-    return (
-      <LayoutShell>
-        <div className="flex items-center justify-center h-[60vh]">
-          <Loader2 className="w-10 h-10 animate-spin text-[#0ecb81]" />
-        </div>
-      </LayoutShell>
-    );
-  }
-
-  const tickerMap: Record<string, number> = {};
-  if (tickers) {
-    (tickers as Ticker[]).forEach((t) => {
-      tickerMap[t.symbol] = parseFloat(t.lastPrice);
-    });
-  }
+  const tickerMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (tickers) {
+      (tickers as Ticker[]).forEach((t) => {
+        map[t.symbol] = parseFloat(t.lastPrice);
+      });
+    }
+    return map;
+  }, [tickers]);
 
   const krakenHoldings = useMemo(() => {
     if (!isRealMode || !krakenBalancesData?.balances) return [];
@@ -86,19 +79,30 @@ export default function PortfolioPage() {
       });
   }, [isRealMode, krakenBalancesData, tickerMap]);
 
-  const portfolioItems = isRealMode
-    ? krakenHoldings
-    : (holdings as PortfolioItem[] || []).map((h) => {
-        const currentPrice = tickerMap[h.symbol] || 0;
-        const currentValue = h.quantity * currentPrice;
-        const costBasis = h.quantity * h.avgBuyPrice;
-        const pnl = currentValue - costBasis;
-        const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
-        return { ...h, currentPrice, currentValue, pnl, pnlPercent };
-      });
+  const portfolioItems = useMemo(() => {
+    if (isRealMode) return krakenHoldings;
+    return (holdings as PortfolioItem[] || []).map((h) => {
+      const currentPrice = tickerMap[h.symbol] || 0;
+      const currentValue = h.quantity * currentPrice;
+      const costBasis = h.quantity * h.avgBuyPrice;
+      const pnl = currentValue - costBasis;
+      const pnlPercent = costBasis > 0 ? (pnl / costBasis) * 100 : 0;
+      return { ...h, currentPrice, currentValue, pnl, pnlPercent };
+    });
+  }, [isRealMode, krakenHoldings, holdings, tickerMap]);
 
   const totalValue = portfolioItems.reduce((sum, i) => sum + i.currentValue, 0) + (isRealMode ? effectiveBalance : 0);
   const totalPnL = portfolioItems.reduce((sum, i) => sum + i.pnl, 0);
+
+  if (loadingPortfolio || loadingTickers) {
+    return (
+      <LayoutShell>
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="w-10 h-10 animate-spin text-[#0ecb81]" />
+        </div>
+      </LayoutShell>
+    );
+  }
 
   const handleSellAll = () => {
     if (!sellTarget) return;

@@ -40,11 +40,11 @@ let reconnectBinanceWs: (() => void) | null = null;
 async function loadTrackedSymbols(): Promise<string[]> {
   try {
     const coins = await storage.getTrackedCoins();
-    if (coins.length > 0) {
-      TRACKED_SYMBOLS = coins.map(c => c.symbol.toLowerCase());
-    } else {
-      TRACKED_SYMBOLS = [...DEFAULT_SYMBOLS];
-    }
+    const dbSymbols = coins
+      .map(c => c.symbol.toLowerCase())
+      .filter(s => s.endsWith("usdt"));
+    const combined = new Set([...DEFAULT_SYMBOLS, ...dbSymbols]);
+    TRACKED_SYMBOLS = Array.from(combined);
   } catch {
     TRACKED_SYMBOLS = [...DEFAULT_SYMBOLS];
   }
@@ -148,7 +148,7 @@ async function setupBinanceLiveStream(httpServer: Server) {
       binanceWs = new WebSocket(url);
 
       binanceWs.on("open", () => {
-        console.log("[Binance WS] Connected to data-stream.binance.vision");
+        console.log(`[Binance WS] Connected to data-stream.binance.vision (${TRACKED_SYMBOLS.length} symbols)`);
         binanceConnected = true;
         broadcast({ type: "status", connected: true });
       });
