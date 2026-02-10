@@ -830,7 +830,198 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
+  // Moved functions to registerRoutes scope for endpoint accessibility
+  async function fetchBinancePrice(symbol: string): Promise<number> {
+    const upperSymbol = symbol.toUpperCase();
+    const ticker = tickerMap.get(upperSymbol);
+    if (ticker) return parseFloat(ticker.lastPrice);
+    try {
+      const res = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${upperSymbol}`);
+      if (res.ok) {
+        const data = await res.json() as any;
+        return parseFloat(data.price) || 0;
+      }
+    } catch (e) {
+      console.error("[fetchBinancePrice] REST fallback error:", e);
+    }
+    return 0;
+  }
+
+  async function executeDcaSell(bot: any, step: number, quantity: number, price: number, avgBuyPrice: number) {
+    const total = quantity * price;
+    const user = await storage.getUser(bot.userId);
+    if (!user) throw new Error("User not found");
+
+    const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
+    if (!portfolioItem || portfolioItem.quantity < quantity) {
+      throw new Error(`Insufficient ${bot.symbol} quantity to sell`);
+    }
+
+    await storage.updateUserBalance(bot.userId, user.balance + total);
+    const newQty = portfolioItem.quantity - quantity;
+    if (newQty <= 0.00000001) {
+      await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
+    } else {
+      await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
+    }
+
+    const pnl = quantity * (price - avgBuyPrice);
+
+    await storage.createTrade({
+      symbol: bot.symbol,
+      type: "sell",
+      quantity,
+      price,
+      status: "completed",
+      orderType: "market",
+      userId: bot.userId,
+      total,
+    } as any);
+
+    await storage.createDcaBotOrder({
+      botId: bot.id,
+      userId: bot.userId,
+      step,
+      type: "sell",
+      price,
+      quantity,
+      total,
+    });
+
+    await storage.incrementBotTrades(bot.id, pnl);
+    return { success: true, pnl, soldQuantity: quantity };
+  }
+
+  // Moved functions to registerRoutes scope for endpoint accessibility
+  async function fetchBinancePrice(symbol: string): Promise<number> {
+    const upperSymbol = symbol.toUpperCase();
+    const ticker = tickerMap.get(upperSymbol);
+    if (ticker) return parseFloat(ticker.lastPrice);
+    try {
+      const res = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${upperSymbol}`);
+      if (res.ok) {
+        const data = await res.json() as any;
+        return parseFloat(data.price) || 0;
+      }
+    } catch (e) {
+      console.error("[fetchBinancePrice] REST fallback error:", e);
+    }
+    return 0;
+  }
+
+  async function executeDcaSell(bot: any, step: number, quantity: number, price: number, avgBuyPrice: number) {
+    const total = quantity * price;
+    const user = await storage.getUser(bot.userId);
+    if (!user) throw new Error("User not found");
+
+    const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
+    if (!portfolioItem || portfolioItem.quantity < quantity) {
+      throw new Error(`Insufficient ${bot.symbol} quantity to sell`);
+    }
+
+    await storage.updateUserBalance(bot.userId, user.balance + total);
+    const newQty = portfolioItem.quantity - quantity;
+    if (newQty <= 0.00000001) {
+      await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
+    } else {
+      await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
+    }
+
+    const pnl = quantity * (price - avgBuyPrice);
+
+    await storage.createTrade({
+      symbol: bot.symbol,
+      type: "sell",
+      quantity,
+      price,
+      status: "completed",
+      orderType: "market",
+      userId: bot.userId,
+      total,
+    } as any);
+
+    await storage.createDcaBotOrder({
+      botId: bot.id,
+      userId: bot.userId,
+      step,
+      type: "sell",
+      price,
+      quantity,
+      total,
+    });
+
+    await storage.incrementBotTrades(bot.id, pnl);
+    return { success: true, pnl, soldQuantity: quantity };
+  }
+
   setupAuth(app);
+
+  app.use((_req, res, next) => {
+    (res as any).fetchBinancePrice = fetchBinancePrice;
+    (res as any).executeDcaSell = executeDcaSell;
+    next();
+  });
+
+  async function fetchBinancePrice(symbol: string): Promise<number> {
+    const upperSymbol = symbol.toUpperCase();
+    const ticker = tickerMap.get(upperSymbol);
+    if (ticker) return parseFloat(ticker.lastPrice);
+    try {
+      const res = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${upperSymbol}`);
+      if (res.ok) {
+        const data = await res.json() as any;
+        return parseFloat(data.price) || 0;
+      }
+    } catch (e) {
+      console.error("[fetchBinancePrice] REST fallback error:", e);
+    }
+    return 0;
+  }
+
+  async function executeDcaSell(bot: any, step: number, quantity: number, price: number, avgBuyPrice: number) {
+    const total = quantity * price;
+    const user = await storage.getUser(bot.userId);
+    if (!user) throw new Error("User not found");
+
+    const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
+    if (!portfolioItem || portfolioItem.quantity < quantity) {
+      throw new Error(`Insufficient ${bot.symbol} quantity to sell`);
+    }
+
+    await storage.updateUserBalance(bot.userId, user.balance + total);
+    const newQty = portfolioItem.quantity - quantity;
+    if (newQty <= 0.00000001) {
+      await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
+    } else {
+      await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
+    }
+
+    const pnl = quantity * (price - avgBuyPrice);
+
+    await storage.createTrade({
+      symbol: bot.symbol,
+      type: "sell",
+      quantity,
+      price,
+      status: "completed",
+      orderType: "market",
+      userId: bot.userId,
+      total,
+    } as any);
+
+    await storage.createDcaBotOrder({
+      botId: bot.id,
+      userId: bot.userId,
+      step,
+      type: "sell",
+      price,
+      quantity,
+      total,
+    });
+
+    await storage.incrementBotTrades(bot.id, pnl);
+    return { success: true, pnl, soldQuantity: quantity };
+  }
 
   const existingAdmin = await storage.getUserByUsername("Admin");
   if (!existingAdmin) {
@@ -3586,8 +3777,8 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Maximum buy steps reached" });
       }
 
-      const currentPrice = await fetchBinancePrice(bot.symbol) || requestedPrice;
-      const execPrice = orderType === "limit" ? requestedPrice : currentPrice;
+      const currentPrice = await fetchBinancePrice(bot.symbol);
+      const execPrice = orderType === "limit" ? (requestedPrice || currentPrice) : currentPrice;
       if (!execPrice || execPrice <= 0) return res.status(400).json({ message: "Invalid price. Market data unavailable." });
 
       const totalCapital = config.totalCapital || bot.tradeAmount;
@@ -3691,7 +3882,7 @@ export async function registerRoutes(
       const remainingQty = totalBought - totalSold;
       if (remainingQty <= 0) return res.status(400).json({ message: "No position to sell" });
 
-      const currentPrice = await fetchBinancePrice(bot.symbol);
+      const currentPrice = await (res as any).fetchBinancePrice(bot.symbol);
       const execPrice = orderType === "limit" ? (requestedPrice || currentPrice) : currentPrice;
       if (!execPrice || execPrice <= 0) return res.status(400).json({ message: "Invalid price. Market data unavailable." });
 
@@ -3707,7 +3898,7 @@ export async function registerRoutes(
       const totalBoughtQty = allBuys.reduce((s, o) => s + o.quantity, 0);
       const avgBuyPrice = totalBoughtQty > 0 ? totalCost / totalBoughtQty : 0;
 
-      const result = await executeDcaSell(bot, step, sellQty, execPrice, avgBuyPrice);
+      const result = await (res as any).executeDcaSell(bot, step, sellQty, execPrice, avgBuyPrice);
       res.json(result);
     } catch (err: any) {
       console.error("[DCA Execute Sell] Error:", err);
@@ -3725,7 +3916,7 @@ export async function registerRoutes(
       const bot = await storage.getAutopilotBot(userId, botId);
       if (!bot) return res.status(404).json({ message: "Bot not found" });
 
-      const currentPrice = await fetchBinancePrice(bot.symbol);
+      const currentPrice = await (res as any).fetchBinancePrice(bot.symbol);
       if (!currentPrice || currentPrice <= 0) {
         return res.status(400).json({ message: "Could not fetch current price" });
       }
@@ -3744,7 +3935,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Nothing to sell" });
       }
 
-      const result = await executeDcaSell(bot, 999, remainingQty, currentPrice, avgPrice);
+      const result = await (res as any).executeDcaSell(bot, 999, remainingQty, currentPrice, avgPrice);
       res.json(result);
     } catch (err: any) {
       console.error("[DCA Sell All] Error:", err);
