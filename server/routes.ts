@@ -3720,7 +3720,9 @@ export async function registerRoutes(
     const { id } = req.params;
 
     try {
-      const bot = await storage.getAutopilotBot((req.user as any).id, Number(id));
+      const userId = (req.user as any).id;
+      const botId = Number(id);
+      const bot = await storage.getAutopilotBot(userId, botId);
       if (!bot) return res.status(404).json({ message: "Bot not found" });
 
       const currentPrice = await fetchBinancePrice(bot.symbol);
