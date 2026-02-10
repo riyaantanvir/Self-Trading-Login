@@ -4,7 +4,13 @@ import { storage } from "./storage";
 import { setupAuth, hashPassword } from "./auth";
 import { z } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
-import { getKrakenUsdtBalance, getKrakenAllBalances, placeKrakenOrder, validateKrakenCredentials } from "./kraken-trade";
+import { 
+  getKrakenUsdtBalance, 
+  getKrakenAllBalances, 
+  placeKrakenOrder, 
+  validateKrakenCredentials,
+  fetchKrakenClosedOrders 
+} from "./kraken-trade";
 import {
   KRAKEN_WS_URL,
   binanceSymbolToKrakenPair,
@@ -2473,17 +2479,20 @@ export async function registerRoutes(
     const creds = { apiKey: user.krakenApiKey, apiSecret: user.krakenApiSecret };
 
     try {
-      const balances = await fetchKrakenBalances(creds.apiKey, creds.apiSecret);
-      let totalValue = 0;
+      const balances = await getKrakenAllBalances(creds);
+      if (!balances.success || !balances.balances) {
+        return res.json({ balance: 0 });
+      }
 
-      for (const [key, val] of Object.entries(balances)) {
-        const quantity = parseFloat(val as string);
+      let totalValue = 0;
+      for (const b of balances.balances) {
+        const quantity = b.balance;
         if (quantity <= 0) continue;
 
-        if (["ZUSD", "USD", "USDT", "USDC"].includes(key)) {
+        if (["USD", "USDT", "USDC", "ZUSD"].includes(b.currency)) {
           totalValue += quantity;
         } else {
-          const symbol = mapKrakenToBinance(key);
+          const symbol = b.currency === "BTC" ? "BTCUSDT" : `${b.currency}USDT`;
           const ticker = tickerMap.get(symbol);
           if (ticker) {
             totalValue += quantity * parseFloat(ticker.lastPrice);
