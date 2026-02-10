@@ -2472,19 +2472,31 @@ export async function registerRoutes(
 
     const creds = { apiKey: user.krakenApiKey, apiSecret: user.krakenApiSecret };
 
-    const result = await getKrakenUsdtBalance(creds);
-    if (!result.success) {
-      console.error(`[Kraken] Balance fetch failed: ${result.error}`);
-      return res.json({
-        balance: 0,
-        error: result.error || "Failed to connect to Kraken"
-      });
+    try {
+      const balances = await fetchKrakenBalances(creds.apiKey, creds.apiSecret);
+      let totalValue = 0;
+
+      for (const [key, val] of Object.entries(balances)) {
+        const quantity = parseFloat(val as string);
+        if (quantity <= 0) continue;
+
+        if (["ZUSD", "USD", "USDT", "USDC"].includes(key)) {
+          totalValue += quantity;
+        } else {
+          const symbol = mapKrakenToBinance(key);
+          const ticker = tickerMap.get(symbol);
+          if (ticker) {
+            totalValue += quantity * parseFloat(ticker.lastPrice);
+          }
+        }
+      }
+
+      console.log(`[Kraken] Total Portfolio Value: ${totalValue}`);
+      res.json({ balance: totalValue });
+    } catch (err: any) {
+      console.error(`[Kraken] Balance fetch failed: ${err.message}`);
+      res.json({ balance: 0, error: err.message });
     }
-
-    const balance = result.balance || 0;
-    console.log(`[Kraken] Balance: ${balance}`);
-
-    res.json({ balance });
   });
 
   app.get("/api/kraken/balances", async (req, res) => {
