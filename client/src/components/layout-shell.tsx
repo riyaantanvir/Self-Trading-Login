@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { BarChart3, Wallet, History, TrendingUp, Briefcase, Bell, Settings, Send, Zap, LayoutGrid, X } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { useDemoRealMode } from "@/hooks/use-trading-mode";
 
 function useTradingMode() {
   const [mode, setMode] = useState<"spot" | "futures">(() => {
@@ -52,6 +53,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [location] = useLocation();
   const { mode: tradingMode, toggle: setTradingMode } = useTradingMode();
+  const { effectiveBalance, isRealMode } = useDemoRealMode();
   const [moreOpen, setMoreOpen] = useState(false);
 
   useEffect(() => {
@@ -136,9 +138,11 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-2 sm:gap-4">
           <NotificationBell />
           <div className="text-right">
-            <div className="text-[10px] sm:text-xs text-muted-foreground leading-none">Balance</div>
+            <div className="text-[10px] sm:text-xs text-muted-foreground leading-none">
+              {isRealMode ? "Real" : "Demo"}
+            </div>
             <div className="text-xs sm:text-sm font-mono font-semibold text-[#0ecb81]" data-testid="text-balance">
-              ${Number(user.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ${Number(effectiveBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </div>
           <span className="text-sm text-muted-foreground hidden lg:inline" data-testid="text-username">{user.username}</span>

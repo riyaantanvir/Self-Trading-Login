@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { useDemoRealMode } from "@/hooks/use-trading-mode";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,7 @@ function formatPrice(price: number) {
 
 export function FuturesTradePanel({ symbol, currentPrice }: FuturesTradePanelProps) {
   const { user } = useAuth();
+  const { effectiveBalance: demoRealBalance } = useDemoRealMode();
   const { toast } = useToast();
   const coinName = symbol.replace("USDT", "");
 
@@ -126,7 +128,7 @@ export function FuturesTradePanel({ symbol, currentPrice }: FuturesTradePanelPro
   });
 
   const availableBalance = wallet?.balance ?? 0;
-  const spotBalance = user ? Number(user.balance) : 0;
+  const spotBalance = demoRealBalance;
   const numAmount = Number(amount) || 0;
   const notionalValue = numAmount * leverage;
   const marginRequired = numAmount;

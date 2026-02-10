@@ -7,6 +7,9 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserBalance(id: number, balance: number): Promise<void>;
+  updateTradingMode(id: number, tradingMode: string): Promise<void>;
+  updateKucoinCredentials(id: number, apiKey: string, apiSecret: string, passphrase: string): Promise<void>;
+  updateBinanceCredentials(id: number, apiKey: string, apiSecret: string): Promise<void>;
   getAllUsers(): Promise<User[]>;
 
   getTrades(userId: number): Promise<Trade[]>;
@@ -95,6 +98,18 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserBalance(id: number, balance: number): Promise<void> {
     await db.update(users).set({ balance }).where(eq(users.id, id));
+  }
+
+  async updateTradingMode(id: number, tradingMode: string): Promise<void> {
+    await db.update(users).set({ tradingMode }).where(eq(users.id, id));
+  }
+
+  async updateKucoinCredentials(id: number, apiKey: string, apiSecret: string, passphrase: string): Promise<void> {
+    await db.update(users).set({ kucoinApiKey: apiKey, kucoinApiSecret: apiSecret, kucoinPassphrase: passphrase }).where(eq(users.id, id));
+  }
+
+  async updateBinanceCredentials(id: number, apiKey: string, apiSecret: string): Promise<void> {
+    await db.update(users).set({ binanceApiKey: apiKey, binanceApiSecret: apiSecret }).where(eq(users.id, id));
   }
 
   async getAllUsers(): Promise<User[]> {

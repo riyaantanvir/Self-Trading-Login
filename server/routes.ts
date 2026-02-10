@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, hashPassword } from "./auth";
 import { z } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
+import { getKucoinUsdtBalance, getKucoinAllBalances, placeKucoinOrder, validateKucoinCredentials, getKucoinTicker } from "./kucoin";
 
 async function sendTelegramMessage(botToken: string, chatId: string, message: string): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -62,6 +63,67 @@ interface TickerData {
 }
 
 const tickerMap = new Map<string, TickerData>();
+
+async function fetchBinancePrice(symbol: string): Promise<number> {
+  const upperSymbol = symbol.toUpperCase();
+  const ticker = tickerMap.get(upperSymbol);
+  if (ticker) return parseFloat(ticker.lastPrice);
+  try {
+    const res = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${upperSymbol}`);
+    if (res.ok) {
+      const data = await res.json() as any;
+      return parseFloat(data.price) || 0;
+    }
+  } catch (e) {
+    console.error("[fetchBinancePrice] REST fallback error:", e);
+  }
+  return 0;
+}
+
+async function executeDcaSell(bot: any, step: number, quantity: number, price: number, avgBuyPrice: number) {
+  const total = quantity * price;
+  const user = await storage.getUser(bot.userId);
+  if (!user) throw new Error("User not found");
+
+  const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
+  if (!portfolioItem || portfolioItem.quantity < quantity) {
+    throw new Error(`Insufficient ${bot.symbol} quantity to sell`);
+  }
+
+  await storage.updateUserBalance(bot.userId, user.balance + total);
+  const newQty = portfolioItem.quantity - quantity;
+  if (newQty <= 0.00000001) {
+    await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
+  } else {
+    await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
+  }
+
+  const pnl = quantity * (price - avgBuyPrice);
+
+  await storage.createTrade({
+    symbol: bot.symbol,
+    type: "sell",
+    quantity,
+    price,
+    status: "completed",
+    orderType: "market",
+    userId: bot.userId,
+    total,
+  } as any);
+
+  await storage.createDcaBotOrder({
+    botId: bot.id,
+    userId: bot.userId,
+    step,
+    type: "sell",
+    price,
+    quantity,
+    total,
+  });
+
+  await storage.incrementBotTrades(bot.id, pnl);
+  return { success: true, pnl, soldQuantity: quantity };
+}
 
 async function setupBinanceLiveStream(httpServer: Server) {
   await loadTrackedSymbols();
@@ -365,68 +427,6 @@ async function setupBinanceLiveStream(httpServer: Server) {
       console.error("[Pending Order Check] Error:", err);
     }
   }, 3000);
-
-  async function fetchBinancePrice(symbol: string): Promise<number> {
-    const upperSymbol = symbol.toUpperCase();
-    const ticker = tickerMap.get(upperSymbol);
-    if (ticker) return parseFloat(ticker.lastPrice);
-    try {
-      const res = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${upperSymbol}`);
-      if (res.ok) {
-        const data = await res.json() as any;
-        return parseFloat(data.price) || 0;
-      }
-    } catch (e) {
-      console.error("[fetchBinancePrice] REST fallback error:", e);
-    }
-    return 0;
-  }
-
-  // Define it early so other functions can use it
-  async function executeDcaSell(bot: any, step: number, quantity: number, price: number, avgBuyPrice: number) {
-    const total = quantity * price;
-    const user = await storage.getUser(bot.userId);
-    if (!user) throw new Error("User not found");
-
-    const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
-    if (!portfolioItem || portfolioItem.quantity < quantity) {
-      throw new Error(`Insufficient ${bot.symbol} quantity to sell`);
-    }
-
-    await storage.updateUserBalance(bot.userId, user.balance + total);
-    const newQty = portfolioItem.quantity - quantity;
-    if (newQty <= 0.00000001) {
-      await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
-    } else {
-      await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
-    }
-
-    const pnl = quantity * (price - avgBuyPrice);
-
-    await storage.createTrade({
-      symbol: bot.symbol,
-      type: "sell",
-      quantity,
-      price,
-      status: "completed",
-      orderType: "market",
-      userId: bot.userId,
-      total,
-    } as any);
-
-    await storage.createDcaBotOrder({
-      botId: bot.id,
-      userId: bot.userId,
-      step,
-      type: "sell",
-      price,
-      quantity,
-      total,
-    });
-
-    await storage.incrementBotTrades(bot.id, pnl);
-    return { success: true, pnl, soldQuantity: quantity };
-  }
 
   async function executeDcaBotCycle(bot: AutopilotBot) {
     const currentPrice = await fetchBinancePrice(bot.symbol);
@@ -830,198 +830,7 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
-  // Moved functions to registerRoutes scope for endpoint accessibility
-  async function fetchBinancePrice(symbol: string): Promise<number> {
-    const upperSymbol = symbol.toUpperCase();
-    const ticker = tickerMap.get(upperSymbol);
-    if (ticker) return parseFloat(ticker.lastPrice);
-    try {
-      const res = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${upperSymbol}`);
-      if (res.ok) {
-        const data = await res.json() as any;
-        return parseFloat(data.price) || 0;
-      }
-    } catch (e) {
-      console.error("[fetchBinancePrice] REST fallback error:", e);
-    }
-    return 0;
-  }
-
-  async function executeDcaSell(bot: any, step: number, quantity: number, price: number, avgBuyPrice: number) {
-    const total = quantity * price;
-    const user = await storage.getUser(bot.userId);
-    if (!user) throw new Error("User not found");
-
-    const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
-    if (!portfolioItem || portfolioItem.quantity < quantity) {
-      throw new Error(`Insufficient ${bot.symbol} quantity to sell`);
-    }
-
-    await storage.updateUserBalance(bot.userId, user.balance + total);
-    const newQty = portfolioItem.quantity - quantity;
-    if (newQty <= 0.00000001) {
-      await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
-    } else {
-      await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
-    }
-
-    const pnl = quantity * (price - avgBuyPrice);
-
-    await storage.createTrade({
-      symbol: bot.symbol,
-      type: "sell",
-      quantity,
-      price,
-      status: "completed",
-      orderType: "market",
-      userId: bot.userId,
-      total,
-    } as any);
-
-    await storage.createDcaBotOrder({
-      botId: bot.id,
-      userId: bot.userId,
-      step,
-      type: "sell",
-      price,
-      quantity,
-      total,
-    });
-
-    await storage.incrementBotTrades(bot.id, pnl);
-    return { success: true, pnl, soldQuantity: quantity };
-  }
-
-  // Moved functions to registerRoutes scope for endpoint accessibility
-  async function fetchBinancePrice(symbol: string): Promise<number> {
-    const upperSymbol = symbol.toUpperCase();
-    const ticker = tickerMap.get(upperSymbol);
-    if (ticker) return parseFloat(ticker.lastPrice);
-    try {
-      const res = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${upperSymbol}`);
-      if (res.ok) {
-        const data = await res.json() as any;
-        return parseFloat(data.price) || 0;
-      }
-    } catch (e) {
-      console.error("[fetchBinancePrice] REST fallback error:", e);
-    }
-    return 0;
-  }
-
-  async function executeDcaSell(bot: any, step: number, quantity: number, price: number, avgBuyPrice: number) {
-    const total = quantity * price;
-    const user = await storage.getUser(bot.userId);
-    if (!user) throw new Error("User not found");
-
-    const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
-    if (!portfolioItem || portfolioItem.quantity < quantity) {
-      throw new Error(`Insufficient ${bot.symbol} quantity to sell`);
-    }
-
-    await storage.updateUserBalance(bot.userId, user.balance + total);
-    const newQty = portfolioItem.quantity - quantity;
-    if (newQty <= 0.00000001) {
-      await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
-    } else {
-      await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
-    }
-
-    const pnl = quantity * (price - avgBuyPrice);
-
-    await storage.createTrade({
-      symbol: bot.symbol,
-      type: "sell",
-      quantity,
-      price,
-      status: "completed",
-      orderType: "market",
-      userId: bot.userId,
-      total,
-    } as any);
-
-    await storage.createDcaBotOrder({
-      botId: bot.id,
-      userId: bot.userId,
-      step,
-      type: "sell",
-      price,
-      quantity,
-      total,
-    });
-
-    await storage.incrementBotTrades(bot.id, pnl);
-    return { success: true, pnl, soldQuantity: quantity };
-  }
-
   setupAuth(app);
-
-  app.use((_req, res, next) => {
-    (res as any).fetchBinancePrice = fetchBinancePrice;
-    (res as any).executeDcaSell = executeDcaSell;
-    next();
-  });
-
-  async function fetchBinancePrice(symbol: string): Promise<number> {
-    const upperSymbol = symbol.toUpperCase();
-    const ticker = tickerMap.get(upperSymbol);
-    if (ticker) return parseFloat(ticker.lastPrice);
-    try {
-      const res = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${upperSymbol}`);
-      if (res.ok) {
-        const data = await res.json() as any;
-        return parseFloat(data.price) || 0;
-      }
-    } catch (e) {
-      console.error("[fetchBinancePrice] REST fallback error:", e);
-    }
-    return 0;
-  }
-
-  async function executeDcaSell(bot: any, step: number, quantity: number, price: number, avgBuyPrice: number) {
-    const total = quantity * price;
-    const user = await storage.getUser(bot.userId);
-    if (!user) throw new Error("User not found");
-
-    const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
-    if (!portfolioItem || portfolioItem.quantity < quantity) {
-      throw new Error(`Insufficient ${bot.symbol} quantity to sell`);
-    }
-
-    await storage.updateUserBalance(bot.userId, user.balance + total);
-    const newQty = portfolioItem.quantity - quantity;
-    if (newQty <= 0.00000001) {
-      await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
-    } else {
-      await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
-    }
-
-    const pnl = quantity * (price - avgBuyPrice);
-
-    await storage.createTrade({
-      symbol: bot.symbol,
-      type: "sell",
-      quantity,
-      price,
-      status: "completed",
-      orderType: "market",
-      userId: bot.userId,
-      total,
-    } as any);
-
-    await storage.createDcaBotOrder({
-      botId: bot.id,
-      userId: bot.userId,
-      step,
-      type: "sell",
-      price,
-      quantity,
-      total,
-    });
-
-    await storage.incrementBotTrades(bot.id, pnl);
-    return { success: true, pnl, soldQuantity: quantity };
-  }
 
   const existingAdmin = await storage.getUserByUsername("Admin");
   if (!existingAdmin) {
@@ -2111,7 +1920,8 @@ export async function registerRoutes(
         stopPrice: z.coerce.number().positive().optional(),
       });
       const data = tradeSchema.parse(req.body);
-      const user = req.user!;
+      const user = await storage.getUser(req.user!.id);
+      if (!user) return res.sendStatus(401);
 
       if (data.orderType === "limit" && !data.limitPrice) {
         return res.status(400).json({ message: "Limit price is required for limit orders" });
@@ -2128,6 +1938,57 @@ export async function registerRoutes(
 
       if (total < 5) {
         return res.status(400).json({ message: "Minimum order amount is 5 USDT" });
+      }
+
+      if (user.tradingMode === "real" && user.kucoinApiKey && user.kucoinApiSecret && user.kucoinPassphrase) {
+        const creds = { apiKey: user.kucoinApiKey, apiSecret: user.kucoinApiSecret, passphrase: user.kucoinPassphrase };
+
+        const orderType = data.orderType === "market" ? "market" : "limit";
+        const orderOpts: any = {
+          symbol: data.symbol,
+          side: data.type as "buy" | "sell",
+          type: orderType,
+        };
+
+        if (orderType === "market") {
+          if (data.type === "buy") {
+            orderOpts.funds = total.toFixed(4);
+          } else {
+            orderOpts.size = data.quantity.toString();
+          }
+        } else {
+          orderOpts.price = (data.limitPrice || data.price).toString();
+          orderOpts.size = data.quantity.toString();
+        }
+
+        const kucoinResult = await placeKucoinOrder(creds, orderOpts);
+        if (!kucoinResult.success) {
+          return res.status(400).json({ message: `KuCoin order failed: ${kucoinResult.error}` });
+        }
+
+        const trade = await storage.createTrade({
+          symbol: data.symbol,
+          type: data.type,
+          quantity: data.quantity,
+          price: data.price,
+          userId: user.id,
+          total,
+          status: "completed",
+          orderType: data.orderType,
+          limitPrice: data.limitPrice || null,
+          stopPrice: data.stopPrice || null,
+        });
+
+        storage.createNotification(
+          user.id,
+          data.type === "buy" ? "trade_buy" : "trade_sell",
+          `[REAL] ${data.type === "buy" ? "Buy" : "Sell"} ${data.symbol}`,
+          `[KuCoin] ${data.type === "buy" ? "Bought" : "Sold"} ${data.quantity} ${data.symbol} at $${data.price.toLocaleString()} (Order: ${kucoinResult.data?.orderId})`,
+          JSON.stringify({ symbol: data.symbol, type: data.type, quantity: data.quantity, price: data.price, total, kucoinOrderId: kucoinResult.data?.orderId, mode: "real" })
+        ).catch(() => {});
+
+        const updatedUser = await storage.getUser(user.id);
+        return res.status(201).json({ trade, user: updatedUser, kucoinOrderId: kucoinResult.data?.orderId, mode: "real" });
       }
 
       if (data.orderType !== "market") {
@@ -2538,6 +2399,119 @@ export async function registerRoutes(
     const { enabled } = schema.parse(req.body);
     await storage.updateSignalAlerts(req.user!.id, enabled);
     res.json({ success: true, enabled });
+  });
+
+  app.get("/api/user/trading-mode", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = await storage.getUser(req.user!.id);
+    res.json({
+      tradingMode: user?.tradingMode || "demo",
+      hasKucoinKeys: !!(user?.kucoinApiKey && user?.kucoinApiSecret && user?.kucoinPassphrase),
+      hasBinanceKeys: !!(user?.binanceApiKey && user?.binanceApiSecret),
+    });
+  });
+
+  app.post("/api/user/trading-mode", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const schema = z.object({ tradingMode: z.enum(["demo", "real"]) });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "Invalid trading mode" });
+
+    const user = await storage.getUser(req.user!.id);
+    if (parsed.data.tradingMode === "real") {
+      if (!user?.kucoinApiKey || !user?.kucoinApiSecret || !user?.kucoinPassphrase) {
+        return res.status(400).json({ message: "Please configure KuCoin API keys first" });
+      }
+    }
+
+    await storage.updateTradingMode(req.user!.id, parsed.data.tradingMode);
+    res.json({ success: true, tradingMode: parsed.data.tradingMode });
+  });
+
+  app.post("/api/user/kucoin-keys", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const schema = z.object({
+      apiKey: z.string().min(1),
+      apiSecret: z.string().min(1),
+      passphrase: z.string().min(1),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ message: "All fields are required" });
+
+    const validation = await validateKucoinCredentials({
+      apiKey: parsed.data.apiKey,
+      apiSecret: parsed.data.apiSecret,
+      passphrase: parsed.data.passphrase,
+    });
+
+    if (!validation.valid) {
+      return res.status(400).json({ message: `Invalid KuCoin credentials: ${validation.error}` });
+    }
+
+    await storage.updateKucoinCredentials(
+      req.user!.id,
+      parsed.data.apiKey,
+      parsed.data.apiSecret,
+      parsed.data.passphrase
+    );
+    res.json({ success: true });
+  });
+
+  app.delete("/api/user/kucoin-keys", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    await storage.updateKucoinCredentials(req.user!.id, "", "", "");
+    await storage.updateTradingMode(req.user!.id, "demo");
+    res.json({ success: true });
+  });
+
+  app.get("/api/user/kucoin-keys", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = await storage.getUser(req.user!.id);
+    if (!user) return res.sendStatus(404);
+    res.json({
+      hasKeys: !!(user.kucoinApiKey && user.kucoinApiSecret && user.kucoinPassphrase),
+      apiKey: user.kucoinApiKey ? `${user.kucoinApiKey.slice(0, 6)}...${user.kucoinApiKey.slice(-4)}` : "",
+    });
+  });
+
+  app.get("/api/kucoin/balance", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = await storage.getUser(req.user!.id);
+    if (!user?.kucoinApiKey || !user?.kucoinApiSecret || !user?.kucoinPassphrase) {
+      return res.status(400).json({ message: "KuCoin API keys not configured" });
+    }
+
+    const result = await getKucoinUsdtBalance({
+      apiKey: user.kucoinApiKey,
+      apiSecret: user.kucoinApiSecret,
+      passphrase: user.kucoinPassphrase,
+    });
+
+    if (!result.success) {
+      return res.status(500).json({ message: result.error });
+    }
+
+    res.json({ balance: result.balance });
+  });
+
+  app.get("/api/kucoin/balances", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = await storage.getUser(req.user!.id);
+    if (!user?.kucoinApiKey || !user?.kucoinApiSecret || !user?.kucoinPassphrase) {
+      return res.status(400).json({ message: "KuCoin API keys not configured" });
+    }
+
+    const result = await getKucoinAllBalances({
+      apiKey: user.kucoinApiKey,
+      apiSecret: user.kucoinApiSecret,
+      passphrase: user.kucoinPassphrase,
+    });
+
+    if (!result.success) {
+      return res.status(500).json({ message: result.error });
+    }
+
+    res.json({ balances: result.balances });
   });
 
   app.get("/api/alerts", async (req, res) => {
@@ -3882,7 +3856,7 @@ export async function registerRoutes(
       const remainingQty = totalBought - totalSold;
       if (remainingQty <= 0) return res.status(400).json({ message: "No position to sell" });
 
-      const currentPrice = await (res as any).fetchBinancePrice(bot.symbol);
+      const currentPrice = await fetchBinancePrice(bot.symbol);
       const execPrice = orderType === "limit" ? (requestedPrice || currentPrice) : currentPrice;
       if (!execPrice || execPrice <= 0) return res.status(400).json({ message: "Invalid price. Market data unavailable." });
 
@@ -3898,7 +3872,7 @@ export async function registerRoutes(
       const totalBoughtQty = allBuys.reduce((s, o) => s + o.quantity, 0);
       const avgBuyPrice = totalBoughtQty > 0 ? totalCost / totalBoughtQty : 0;
 
-      const result = await (res as any).executeDcaSell(bot, step, sellQty, execPrice, avgBuyPrice);
+      const result = await executeDcaSell(bot, step, sellQty, execPrice, avgBuyPrice);
       res.json(result);
     } catch (err: any) {
       console.error("[DCA Execute Sell] Error:", err);
@@ -3916,7 +3890,7 @@ export async function registerRoutes(
       const bot = await storage.getAutopilotBot(userId, botId);
       if (!bot) return res.status(404).json({ message: "Bot not found" });
 
-      const currentPrice = await (res as any).fetchBinancePrice(bot.symbol);
+      const currentPrice = await fetchBinancePrice(bot.symbol);
       if (!currentPrice || currentPrice <= 0) {
         return res.status(400).json({ message: "Could not fetch current price" });
       }
@@ -3935,7 +3909,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Nothing to sell" });
       }
 
-      const result = await (res as any).executeDcaSell(bot, 999, remainingQty, currentPrice, avgPrice);
+      const result = await executeDcaSell(bot, 999, remainingQty, currentPrice, avgPrice);
       res.json(result);
     } catch (err: any) {
       console.error("[DCA Sell All] Error:", err);

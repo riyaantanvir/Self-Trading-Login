@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
 import { useCreateTrade, useTickers, usePortfolio, useCreateAlert, usePendingOrders, useCancelOrder } from "@/hooks/use-trades";
 import { useAuth } from "@/hooks/use-auth";
+import { useDemoRealMode } from "@/hooks/use-trading-mode";
 import { LayoutShell } from "@/components/layout-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -608,6 +609,7 @@ function TradePanel({
   const { data: pendingData } = usePendingOrders();
   const cancelOrder = useCancelOrder();
   const { user } = useAuth();
+  const { effectiveBalance: demoRealBalance } = useDemoRealMode();
   const { data: portfolioData } = usePortfolio();
   const coinName = symbol.replace("USDT", "");
 
@@ -626,7 +628,7 @@ function TradePanel({
   const minUsdt = 5;
   const isBelowMin = usdtTotal > 0 && usdtTotal < minUsdt;
 
-  const maxBuyUsdt = user ? Number(user.balance) : 0;
+  const maxBuyUsdt = demoRealBalance;
   const maxSellUsdt = holdingQty * effectivePrice;
 
   const pendingOrders = (pendingData as any[] || []).filter((o: any) => o.symbol === symbol);

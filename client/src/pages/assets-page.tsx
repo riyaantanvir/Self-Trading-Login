@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { usePortfolio, useTickers, useTodayPnl, useFuturesTodayPnl } from "@/hooks/use-trades";
 import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
 import { useAuth } from "@/hooks/use-auth";
+import { useDemoRealMode } from "@/hooks/use-trading-mode";
 import { LayoutShell } from "@/components/layout-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,6 +89,7 @@ interface PortfolioItem {
 
 export default function AssetsPage() {
   const { user } = useAuth();
+  const { effectiveBalance, isRealMode } = useDemoRealMode();
   const { data: holdings, isLoading: loadingPortfolio } = usePortfolio();
   const { data: tickers, isLoading: loadingTickers } = useTickers();
   const { data: todayPnlData } = useTodayPnl();
@@ -155,7 +157,7 @@ export default function AssetsPage() {
     );
   }, [portfolioItems, search]);
 
-  const cashBalance = user?.balance || 0;
+  const cashBalance = effectiveBalance;
 
   const totalHoldingsValue = portfolioItems.reduce(
     (sum, i) => sum + i.currentValue,

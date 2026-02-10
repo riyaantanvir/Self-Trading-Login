@@ -13,6 +13,12 @@ export const users = pgTable("users", {
   telegramChatId: text("telegram_chat_id").default(""),
   newsAlertsEnabled: boolean("news_alerts_enabled").default(false).notNull(),
   signalAlertsEnabled: boolean("signal_alerts_enabled").default(false).notNull(),
+  tradingMode: text("trading_mode").default("demo").notNull(),
+  kucoinApiKey: text("kucoin_api_key").default(""),
+  kucoinApiSecret: text("kucoin_api_secret").default(""),
+  kucoinPassphrase: text("kucoin_passphrase").default(""),
+  binanceApiKey: text("binance_api_key").default(""),
+  binanceApiSecret: text("binance_api_secret").default(""),
 });
 
 export const trades = pgTable("trades", {

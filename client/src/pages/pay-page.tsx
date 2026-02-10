@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useDemoRealMode } from "@/hooks/use-trading-mode";
 import { LayoutShell } from "@/components/layout-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ interface TransferHistoryItem {
 
 export default function PayPage() {
   const { user } = useAuth();
+  const { effectiveBalance } = useDemoRealMode();
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
@@ -89,12 +91,12 @@ export default function PayPage() {
       toast({ title: "Invalid amount", description: "Minimum transfer is $0.01", variant: "destructive" });
       return;
     }
-    if (user && amt > user.balance) {
+    if (user && amt > effectiveBalance) {
       toast({ title: "Insufficient balance", description: "You don't have enough USDT", variant: "destructive" });
       return;
     }
     setStep("confirm");
-  }, [amount, user, toast]);
+  }, [amount, user, effectiveBalance, toast]);
 
   const handleConfirm = useCallback(() => {
     if (!selectedUser) return;
@@ -244,7 +246,7 @@ export default function PayPage() {
                     autoFocus
                   />
                   <div className="text-xs text-muted-foreground text-right mt-1">
-                    Available: ${user.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT
+                    Available: ${effectiveBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDT
                   </div>
                 </div>
 
