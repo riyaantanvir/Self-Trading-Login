@@ -1,7 +1,7 @@
 # Self Treding - Crypto Trading Platform
 
 ## Overview
-A Binance-style simulated crypto trading platform with real-time market data from the Binance production WebSocket API. Users can view live coin prices, execute dummy trades, and track their portfolio. The platform aims to provide a comprehensive and realistic cryptocurrency trading simulation environment.
+A Binance-style simulated crypto trading platform with real-time market data from the Kraken public API. Users can view live coin prices, execute dummy trades, and track their portfolio. The platform aims to provide a comprehensive and realistic cryptocurrency trading simulation environment.
 
 ## User Preferences
 Not specified.
@@ -10,7 +10,7 @@ Not specified.
 The platform is built with a React, Vite, TypeScript, TailwindCSS, and shadcn/ui frontend, an Express.js and TypeScript backend, and a PostgreSQL database with Drizzle ORM. Routing is handled by wouter, and state management by TanStack React Query. Charts are rendered using lightweight-charts (TradingView).
 
 **Key Features:**
--   **Real-time Market Data:** Connects to `wss://data-stream.binance.vision` for live miniTicker data, relayed to clients via `/ws/market` every second. Candlestick data is fetched from `https://data-api.binance.vision/api/v3/klines`. A REST fallback (`/api/market/tickers`) provides cached data if WebSocket is unavailable.
+-   **Real-time Market Data:** Connects to `wss://ws.kraken.com/v2` for live ticker data via Kraken WebSocket v2, relayed to clients via `/ws/market` every second. Candlestick data is fetched from `https://api.kraken.com/0/public/OHLC`. A REST fallback (`/api/market/tickers`) provides cached data via `fetchKrakenAllTickers` if WebSocket is unavailable. Symbol mapping layer (`server/kraken-market.ts`) converts between Binance-format symbols (BTCUSDT) used by frontend and Kraken-format pairs (XBT/USD).
 -   **Simulated Trading:** Users start with $100,000 for simulated trades, with a minimum trade size of 5 USDT. Supports various order types: Market, Limit, Stop Market, and Stop Limit, with server-side execution and pending order management.
 -   **Portfolio Management:** Tracks user portfolio holdings, P&L calculations (including daily PNL based on a 6AM-6AM window), and trade history.
 -   **Futures Trading:** A dedicated futures wallet, leverage from 1x to 125x, Cross and Isolated margin modes, and tracking of long/short positions with liquidation prices, unrealized PnL, and ROE%.
@@ -48,17 +48,20 @@ The platform is built with a React, Vite, TypeScript, TailwindCSS, and shadcn/ui
     -   Kraken uses different pair formats (e.g., XBTUSDT for Bitcoin). The `mapSymbolToKraken()` function in `kraken-trade.ts` handles symbol translation.
 
 ## Recent Changes
-- **2026-02-10:** Made Assets, Portfolio, and PNL pages fully mode-aware:
-  - Real mode: Shows Kraken crypto holdings, hides demo PNL/Avg Buy data, uses USD labels, hides Futures tab
-  - Demo mode: Unchanged behavior with full PNL tracking, USDT labels, and all features
-  - PNL page shows informational message in Real mode directing users to switch to Demo for PNL analysis
-- **2026-02-10:** Migrated real trading from Binance to Kraken API (Binance.com geo-blocked from US servers with HTTP 451). Market data still from Binance WebSocket (public, not geo-blocked).
-- **2026-02-10:** Fixed error detection bug: Changed `json.code && json.msg` checks to `json.msg !== undefined` with `!res.ok` checks.
+- **2026-02-10:** Migrated ALL market data from Binance to Kraken:
+  - WebSocket: `wss://data-stream.binance.vision` → `wss://ws.kraken.com/v2` (ticker channel)
+  - REST OHLC/Klines: Binance klines → Kraken `/0/public/OHLC`
+  - REST Depth: Binance depth → Kraken `/0/public/Depth`
+  - REST Ticker/Price: Binance ticker → Kraken `/0/public/Ticker`
+  - Created `server/kraken-market.ts` with symbol mapping (BTCUSDT ↔ XBT/USD), interval mapping, caching, and all helper functions
+  - Frontend unchanged - still uses BTCUSDT format everywhere
+- **2026-02-10:** Made Assets, Portfolio, and PNL pages fully mode-aware
+- **2026-02-10:** Migrated real trading from Binance to Kraken API (Binance.com geo-blocked from US servers with HTTP 451)
 
 ## External Dependencies
--   Binance Production WebSocket API (`wss://data-stream.binance.vision`) for real-time market data (public, no auth needed).
--   Binance Data API (`https://data-api.binance.vision/api/v3/klines`) for historical candlestick data (public).
--   Kraken REST API (`https://api.kraken.com`) for authenticated trading (balance, orders, validation).
+-   Kraken WebSocket API v2 (`wss://ws.kraken.com/v2`) for real-time ticker data (public, no auth needed).
+-   Kraken REST API (`https://api.kraken.com/0/public/*`) for OHLC candles, order book depth, ticker data (public, no auth needed).
+-   Kraken REST API (`https://api.kraken.com/0/private/*`) for authenticated trading (balance, orders, validation).
 -   CryptoCompare API for crypto news feeds.
 -   alternative.me API for Fear & Greed Index data.
 -   Telegram Bot API for sending price alerts.

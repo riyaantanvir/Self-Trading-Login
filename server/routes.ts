@@ -5,6 +5,20 @@ import { setupAuth, hashPassword } from "./auth";
 import { z } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
 import { getKrakenUsdtBalance, getKrakenAllBalances, placeKrakenOrder, validateKrakenCredentials } from "./kraken-trade";
+import {
+  KRAKEN_WS_URL,
+  binanceSymbolToKrakenPair,
+  binanceSymbolToKrakenRestPair,
+  krakenResponseKeyToBinanceSymbol,
+  fetchKrakenPrice,
+  fetchKrakenOHLC,
+  fetchKrakenOHLCCloses,
+  fetchKrakenDepth,
+  fetchKrakenTicker,
+  fetchKrakenAllTickers,
+  binanceIntervalToKraken,
+  type TickerData,
+} from "./kraken-market";
 
 async function sendTelegramMessage(botToken: string, chatId: string, message: string): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -35,7 +49,7 @@ const DEFAULT_SYMBOLS = [
 ];
 
 let TRACKED_SYMBOLS: string[] = [...DEFAULT_SYMBOLS];
-let reconnectBinanceWs: (() => void) | null = null;
+let reconnectKrakenWs: (() => void) | null = null;
 
 async function loadTrackedSymbols(): Promise<string[]> {
   try {
@@ -51,33 +65,13 @@ async function loadTrackedSymbols(): Promise<string[]> {
   return TRACKED_SYMBOLS;
 }
 
-interface TickerData {
-  symbol: string;
-  lastPrice: string;
-  openPrice: string;
-  priceChangePercent: string;
-  highPrice: string;
-  lowPrice: string;
-  volume: string;
-  quoteVolume: string;
-}
-
 const tickerMap = new Map<string, TickerData>();
 
-async function fetchBinancePrice(symbol: string): Promise<number> {
+async function fetchCurrentPrice(symbol: string): Promise<number> {
   const upperSymbol = symbol.toUpperCase();
   const ticker = tickerMap.get(upperSymbol);
   if (ticker) return parseFloat(ticker.lastPrice);
-  try {
-    const res = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${upperSymbol}`);
-    if (res.ok) {
-      const data = await res.json() as any;
-      return parseFloat(data.price) || 0;
-    }
-  } catch (e) {
-    console.error("[fetchBinancePrice] REST fallback error:", e);
-  }
-  return 0;
+  return fetchKrakenPrice(upperSymbol);
 }
 
 async function executeDcaSell(bot: any, step: number, quantity: number, price: number, avgBuyPrice: number) {
@@ -125,81 +119,108 @@ async function executeDcaSell(bot: any, step: number, quantity: number, price: n
   return { success: true, pnl, soldQuantity: quantity };
 }
 
-async function setupBinanceLiveStream(httpServer: Server) {
+async function setupKrakenLiveStream(httpServer: Server) {
   await loadTrackedSymbols();
 
   const wss = new WebSocketServer({ server: httpServer, path: "/ws/market" });
   const clients = new Set<WebSocket>();
-  let binanceWs: WebSocket | null = null;
+  let krakenWs: WebSocket | null = null;
   let reconnectTimer: NodeJS.Timeout | null = null;
   let broadcastInterval: NodeJS.Timeout | null = null;
-  let binanceConnected = false;
+  let krakenConnected = false;
 
-  function connectBinance() {
-    if (binanceWs) {
-      try { binanceWs.close(); } catch {}
-      binanceWs = null;
+  async function seedTickersFromRest() {
+    try {
+      const tickers = await fetchKrakenAllTickers(
+        TRACKED_SYMBOLS.map(s => s.toUpperCase())
+      );
+      for (const t of tickers) {
+        tickerMap.set(t.symbol, t);
+      }
+      console.log(`[Kraken] Seeded ${tickers.length} tickers from REST`);
+    } catch (e) {
+      console.error("[Kraken] REST seed error:", e);
+    }
+  }
+
+  function connectKraken() {
+    if (krakenWs) {
+      try { krakenWs.close(); } catch {}
+      krakenWs = null;
     }
 
-    const streams = TRACKED_SYMBOLS.map(s => `${s}@miniTicker`).join("/");
-    const url = `wss://data-stream.binance.vision/stream?streams=${streams}`;
+    const krakenSymbols = TRACKED_SYMBOLS.map(s => binanceSymbolToKrakenPair(s));
 
     try {
-      binanceWs = new WebSocket(url);
+      krakenWs = new WebSocket(KRAKEN_WS_URL);
 
-      binanceWs.on("open", () => {
-        console.log(`[Binance WS] Connected to data-stream.binance.vision (${TRACKED_SYMBOLS.length} symbols)`);
-        binanceConnected = true;
+      krakenWs.on("open", () => {
+        console.log(`[Kraken WS] Connected (${TRACKED_SYMBOLS.length} symbols)`);
+        krakenConnected = true;
         broadcast({ type: "status", connected: true });
+
+        const subscribeMsg = JSON.stringify({
+          method: "subscribe",
+          params: {
+            channel: "ticker",
+            symbol: krakenSymbols,
+            snapshot: true,
+          },
+        });
+        krakenWs!.send(subscribeMsg);
       });
 
-      binanceWs.on("message", (rawData) => {
+      krakenWs.on("message", (rawData) => {
         try {
           const msg = JSON.parse(rawData.toString());
-          const d = msg.data;
-          if (!d || !d.s) return;
+          if (msg.channel !== "ticker" || !msg.data) return;
 
-          const symbol = d.s;
-          const openPrice = parseFloat(d.o);
-          const closePrice = parseFloat(d.c);
-          const changePercent = openPrice > 0 ? ((closePrice - openPrice) / openPrice) * 100 : 0;
+          for (const d of msg.data) {
+            if (!d.symbol) continue;
+            const binSymbol = krakenResponseKeyToBinanceSymbol(d.symbol.replace("/", ""));
+            const lastPrice = String(d.last);
+            const openPrice = tickerMap.get(binSymbol)?.openPrice || lastPrice;
+            const open = parseFloat(openPrice);
+            const close = parseFloat(lastPrice);
+            const changePercent = open > 0 ? ((close - open) / open) * 100 : 0;
 
-          tickerMap.set(symbol, {
-            symbol,
-            lastPrice: d.c,
-            openPrice: d.o,
-            priceChangePercent: changePercent.toFixed(2),
-            highPrice: d.h,
-            lowPrice: d.l,
-            volume: d.v,
-            quoteVolume: d.q,
-          });
+            tickerMap.set(binSymbol, {
+              symbol: binSymbol,
+              lastPrice,
+              openPrice,
+              priceChangePercent: changePercent.toFixed(2),
+              highPrice: String(d.high),
+              lowPrice: String(d.low),
+              volume: String(d.volume),
+              quoteVolume: String(d.vwap ? parseFloat(String(d.volume)) * parseFloat(String(d.vwap)) : 0),
+            });
+          }
         } catch {}
       });
 
-      binanceWs.on("error", (err) => {
-        console.error("[Binance WS] Error:", (err as any).message);
-        binanceConnected = false;
+      krakenWs.on("error", (err) => {
+        console.error("[Kraken WS] Error:", (err as any).message);
+        krakenConnected = false;
       });
 
-      binanceWs.on("close", () => {
-        console.log("[Binance WS] Disconnected, reconnecting in 3s...");
-        binanceConnected = false;
-        binanceWs = null;
+      krakenWs.on("close", () => {
+        console.log("[Kraken WS] Disconnected, reconnecting in 3s...");
+        krakenConnected = false;
+        krakenWs = null;
         broadcast({ type: "status", connected: false });
         if (!reconnectTimer) {
           reconnectTimer = setTimeout(() => {
             reconnectTimer = null;
-            connectBinance();
+            connectKraken();
           }, 3000);
         }
       });
     } catch (err) {
-      console.error("[Binance WS] Failed:", err);
-      binanceConnected = false;
+      console.error("[Kraken WS] Failed:", err);
+      krakenConnected = false;
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
-        connectBinance();
+        connectKraken();
       }, 5000);
     }
   }
@@ -293,23 +314,8 @@ async function setupBinanceLiveStream(httpServer: Server) {
     return { upper: sma + multiplier * stdDev, middle: sma, lower: sma - multiplier * stdDev };
   }
 
-  const klineCache = new Map<string, { data: number[]; ts: number }>();
-
   async function fetchKlineCloses(symbol: string, interval: string): Promise<number[]> {
-    const key = `${symbol}_${interval}`;
-    const cached = klineCache.get(key);
-    if (cached && Date.now() - cached.ts < 30000) return cached.data;
-    try {
-      const url = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&limit=50`;
-      const res = await fetch(url);
-      if (!res.ok) return cached?.data || [];
-      const raw = await res.json();
-      const closes = raw.map((k: any) => parseFloat(k[4]));
-      klineCache.set(key, { data: closes, ts: Date.now() });
-      return closes;
-    } catch {
-      return cached?.data || [];
-    }
+    return fetchKrakenOHLCCloses(symbol, interval, 50);
   }
 
   setInterval(async () => {
@@ -429,7 +435,7 @@ async function setupBinanceLiveStream(httpServer: Server) {
   }, 3000);
 
   async function executeDcaBotCycle(bot: AutopilotBot) {
-    const currentPrice = await fetchBinancePrice(bot.symbol);
+    const currentPrice = await fetchCurrentPrice(bot.symbol);
     if (!currentPrice || currentPrice <= 0) return;
 
     let config: any = {};
@@ -624,11 +630,9 @@ async function setupBinanceLiveStream(httpServer: Server) {
 
   async function computeSupportResistance(symbol: string): Promise<{ supports: { price: number; touches: number }[]; resistances: { price: number; touches: number }[]; currentPrice: number } | null> {
     try {
-      const url = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1h&limit=200`;
-      const response = await fetch(url);
-      if (!response.ok) return null;
-      const data = await response.json();
-      const candles = (data as any[]).map((k: any) => ({
+      const klineData = await fetchKrakenOHLC(symbol.toUpperCase(), "1h", 200);
+      if (klineData.length === 0) return null;
+      const candles = klineData.map((k: any) => ({
         high: parseFloat(k[2]),
         low: parseFloat(k[3]),
         close: parseFloat(k[4]),
@@ -679,14 +683,12 @@ async function setupBinanceLiveStream(httpServer: Server) {
           const batch = symbols.slice(i, i + batchSize);
           const promises = batch.map(async (sym) => {
             try {
-              const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=1h&limit=50`;
-              const response = await fetch(url);
-              if (!response.ok) return null;
-              const data = await response.json();
-              const closes = (data as any[]).map((k: any) => parseFloat(k[4]));
-              const volumes = (data as any[]).map((k: any) => parseFloat(k[5]));
-              const highs = (data as any[]).map((k: any) => parseFloat(k[2]));
-              const lows = (data as any[]).map((k: any) => parseFloat(k[3]));
+              const klineData = await fetchKrakenOHLC(sym, "1h", 50);
+              if (klineData.length === 0) return null;
+              const closes = klineData.map((k: any) => parseFloat(k[4]));
+              const volumes = klineData.map((k: any) => parseFloat(k[5]));
+              const highs = klineData.map((k: any) => parseFloat(k[2]));
+              const lows = klineData.map((k: any) => parseFloat(k[3]));
               const currentPrice = closes[closes.length - 1];
               const rsi = computeRSI(closes, 14);
               const ema9 = computeEMAArray(closes, 9);
@@ -802,11 +804,12 @@ async function setupBinanceLiveStream(httpServer: Server) {
     }
   }, 60000);
 
-  connectBinance();
+  seedTickersFromRest();
+  connectKraken();
 
-  reconnectBinanceWs = async () => {
+  reconnectKrakenWs = async () => {
     await loadTrackedSymbols();
-    connectBinance();
+    connectKraken();
   };
 
   wss.on("connection", (ws) => {
@@ -844,7 +847,7 @@ export async function registerRoutes(
     console.log("Admin user seeded");
   }
 
-  setupBinanceLiveStream(httpServer);
+  setupKrakenLiveStream(httpServer);
 
   app.get("/api/market/tickers", async (_req, res) => {
     try {
@@ -865,13 +868,11 @@ export async function registerRoutes(
       const interval = (req.query.interval as string) || "1h";
       const limit = Math.min(parseInt(req.query.limit as string) || 500, 1000);
 
-      const url = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=${limit}`;
-      const response = await fetch(url);
-      if (!response.ok) {
+      const klineData = await fetchKrakenOHLC(symbol, interval, limit);
+      if (klineData.length === 0) {
         return res.status(502).json({ message: "Failed to fetch klines" });
       }
-      const data = await response.json();
-      const klines = (data as any[]).map((k: any) => ({
+      const klines = klineData.map((k: any) => ({
         time: Math.floor(k[0] / 1000),
         open: parseFloat(k[1]),
         high: parseFloat(k[2]),
@@ -902,12 +903,10 @@ export async function registerRoutes(
         const batch = symbols.slice(i, i + batchSize);
         const promises = batch.map(async (sym) => {
           try {
-            const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=1h&limit=50`;
-            const response = await fetch(url);
-            if (!response.ok) return null;
-            const data = await response.json();
-            const closes = (data as any[]).map((k: any) => parseFloat(k[4]));
-            const volumes = (data as any[]).map((k: any) => parseFloat(k[5]));
+            const klineData = await fetchKrakenOHLC(sym, "1h", 50);
+            if (klineData.length === 0) return null;
+            const closes = klineData.map((k: any) => parseFloat(k[4]));
+            const volumes = klineData.map((k: any) => parseFloat(k[5]));
 
             if (closes.length < 26) return null;
 
@@ -972,10 +971,7 @@ export async function registerRoutes(
         return res.json(depthCache[symbol].data);
       }
 
-      const url = `https://data-api.binance.vision/api/v3/depth?symbol=${symbol}&limit=100`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Binance depth API failed");
-      const raw = await response.json() as { bids: string[][]; asks: string[][] };
+      const raw = await fetchKrakenDepth(symbol, 100);
 
       const currentTicker = tickerMap.get(symbol);
       const currentPrice = currentTicker ? parseFloat(currentTicker.lastPrice) : 0;
@@ -1039,13 +1035,10 @@ export async function registerRoutes(
 
       const promises = topSymbols.map(async (sym) => {
         try {
-          const depthUrl = `https://data-api.binance.vision/api/v3/depth?symbol=${sym}&limit=50`;
-          const depthRes = await fetch(depthUrl);
-          if (!depthRes.ok) return null;
-          const depth = await depthRes.json() as { bids: string[][]; asks: string[][] };
+          const depth = await fetchKrakenDepth(sym, 50);
 
-          const bidVolume = depth.bids.reduce((sum: number, [p, q]: string[]) => sum + parseFloat(p) * parseFloat(q), 0);
-          const askVolume = depth.asks.reduce((sum: number, [p, q]: string[]) => sum + parseFloat(p) * parseFloat(q), 0);
+          const bidVolume = depth.bids.reduce((sum: number, [p, q]: any[]) => sum + parseFloat(p) * parseFloat(q), 0);
+          const askVolume = depth.asks.reduce((sum: number, [p, q]: any[]) => sum + parseFloat(p) * parseFloat(q), 0);
           const total = bidVolume + askVolume;
 
           const ticker = tickerMap.get(sym);
@@ -1113,14 +1106,12 @@ export async function registerRoutes(
         const batch = symbols.slice(i, i + batchSize);
         const promises = batch.map(async (sym) => {
           try {
-            const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=1h&limit=50`;
-            const response = await fetch(url);
-            if (!response.ok) return null;
-            const data = await response.json();
-            const closes = (data as any[]).map((k: any) => parseFloat(k[4]));
-            const volumes = (data as any[]).map((k: any) => parseFloat(k[5]));
-            const highs = (data as any[]).map((k: any) => parseFloat(k[2]));
-            const lows = (data as any[]).map((k: any) => parseFloat(k[3]));
+            const klineData = await fetchKrakenOHLC(sym, "1h", 50);
+            if (klineData.length === 0) return null;
+            const closes = klineData.map((k: any) => parseFloat(k[4]));
+            const volumes = klineData.map((k: any) => parseFloat(k[5]));
+            const highs = klineData.map((k: any) => parseFloat(k[2]));
+            const lows = klineData.map((k: any) => parseFloat(k[3]));
 
             const currentPrice = closes[closes.length - 1];
             const rsi = computeRSI(closes, 14);
@@ -1202,11 +1193,9 @@ export async function registerRoutes(
   app.get("/api/market/support-resistance/:symbol", async (req, res) => {
     try {
       const symbol = req.params.symbol.toUpperCase();
-      const url = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=1h&limit=200`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Failed to fetch klines");
-      const data = await response.json();
-      const candles = (data as any[]).map((k: any) => ({
+      const klineData = await fetchKrakenOHLC(symbol, "1h", 200);
+      if (klineData.length === 0) throw new Error("Failed to fetch klines");
+      const candles = klineData.map((k: any) => ({
         high: parseFloat(k[2]),
         low: parseFloat(k[3]),
         close: parseFloat(k[4]),
@@ -1268,11 +1257,8 @@ export async function registerRoutes(
       for (let i = 0; i < topSymbols.length; i += batchSize) {
         const batch = topSymbols.slice(i, i + batchSize);
         const promises = batch.map(async (sym) => {
-          const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=1h&limit=72`;
-          const response = await fetch(url);
-          if (!response.ok) return null;
-          const data = await response.json();
-          const closes = (data as any[]).map((k: any) => parseFloat(k[4]));
+          const closes = await fetchKrakenOHLCCloses(sym, "1h", 72);
+          if (closes.length === 0) return null;
           const returns: number[] = [];
           for (let j = 1; j < closes.length; j++) {
             returns.push((closes[j] - closes[j - 1]) / closes[j - 1]);
@@ -1329,13 +1315,10 @@ export async function registerRoutes(
 
       const promises = topSymbols.map(async (sym) => {
         try {
-          const url = `https://data-api.binance.vision/api/v3/depth?symbol=${sym}&limit=100`;
-          const response = await fetch(url);
-          if (!response.ok) return null;
-          const raw = await response.json() as { bids: string[][]; asks: string[][] };
+          const raw = await fetchKrakenDepth(sym, 100);
 
-          const bids = raw.bids.map(([p, q]: string[]) => ({ price: parseFloat(p), quantity: parseFloat(q) }));
-          const asks = raw.asks.map(([p, q]: string[]) => ({ price: parseFloat(p), quantity: parseFloat(q) }));
+          const bids = raw.bids.map(([p, q]: any[]) => ({ price: parseFloat(p), quantity: parseFloat(q) }));
+          const asks = raw.asks.map(([p, q]: any[]) => ({ price: parseFloat(p), quantity: parseFloat(q) }));
 
           const totalBid = bids.reduce((s: number, b: any) => s + b.price * b.quantity, 0);
           const totalAsk = asks.reduce((s: number, a: any) => s + a.price * a.quantity, 0);
@@ -1411,13 +1394,11 @@ export async function registerRoutes(
         const batch = symbols.slice(i, i + batchSize);
         const promises = batch.map(async (sym) => {
           try {
-            const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=1h&limit=100`;
-            const response = await fetch(url);
-            if (!response.ok) return null;
-            const data = await response.json();
-            const closes = (data as any[]).map((k: any) => parseFloat(k[4]));
-            const highs = (data as any[]).map((k: any) => parseFloat(k[2]));
-            const lows = (data as any[]).map((k: any) => parseFloat(k[3]));
+            const klineData = await fetchKrakenOHLC(sym, "1h", 100);
+            if (klineData.length === 0) return null;
+            const closes = klineData.map((k: any) => parseFloat(k[4]));
+            const highs = klineData.map((k: any) => parseFloat(k[2]));
+            const lows = klineData.map((k: any) => parseFloat(k[3]));
 
             if (closes.length < 30) return null;
 
@@ -1540,11 +1521,8 @@ export async function registerRoutes(
         const tfResults: any = {};
         for (const tf of timeframes) {
           try {
-            const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=${tf.interval}&limit=${tf.limit}`;
-            const response = await fetch(url);
-            if (!response.ok) { tfResults[tf.label] = null; continue; }
-            const data = await response.json();
-            const closes = (data as any[]).map((k: any) => parseFloat(k[4]));
+            const closes = await fetchKrakenOHLCCloses(sym, tf.interval, tf.limit);
+            if (closes.length === 0) { tfResults[tf.label] = null; continue; }
 
             if (closes.length < 21) { tfResults[tf.label] = null; continue; }
 
@@ -1624,12 +1602,10 @@ export async function registerRoutes(
         return res.json(volumeProfileCache[symbol].data);
       }
 
-      const url = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=1h&limit=200`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("Failed to fetch klines");
-      const data = await response.json();
+      const klineData = await fetchKrakenOHLC(symbol, "1h", 200);
+      if (klineData.length === 0) throw new Error("Failed to fetch klines");
 
-      const candles = (data as any[]).map((k: any) => ({
+      const candles = klineData.map((k: any) => ({
         open: parseFloat(k[1]),
         high: parseFloat(k[2]),
         low: parseFloat(k[3]),
@@ -1726,12 +1702,10 @@ export async function registerRoutes(
         const batch = symbols.slice(i, i + batchSize);
         const promises = batch.map(async (sym) => {
           try {
-            const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=1h&limit=50`;
-            const response = await fetch(url);
-            if (!response.ok) return null;
-            const data = await response.json();
-            const closes = (data as any[]).map((k: any) => parseFloat(k[4]));
-            const volumes = (data as any[]).map((k: any) => parseFloat(k[5]));
+            const klineData = await fetchKrakenOHLC(sym, "1h", 50);
+            if (klineData.length === 0) return null;
+            const closes = klineData.map((k: any) => parseFloat(k[4]));
+            const volumes = klineData.map((k: any) => parseFloat(k[5]));
 
             if (closes.length < 21) return null;
 
@@ -1806,16 +1780,13 @@ export async function registerRoutes(
 
       const promises = symbols.map(async (sym) => {
         try {
-          const url = `https://data-api.binance.vision/api/v3/depth?symbol=${sym}&limit=50`;
-          const response = await fetch(url);
-          if (!response.ok) return null;
-          const raw = await response.json() as { bids: string[][]; asks: string[][] };
+          const raw = await fetchKrakenDepth(sym, 50);
 
           const ticker = tickerMap.get(sym);
           const currentPrice = ticker ? parseFloat(ticker.lastPrice) : 0;
 
-          const bids = raw.bids.map(([p, q]: string[]) => ({ price: parseFloat(p), quantity: parseFloat(q), usd: parseFloat(p) * parseFloat(q) }));
-          const asks = raw.asks.map(([p, q]: string[]) => ({ price: parseFloat(p), quantity: parseFloat(q), usd: parseFloat(p) * parseFloat(q) }));
+          const bids = raw.bids.map(([p, q]: any[]) => ({ price: parseFloat(p), quantity: parseFloat(q), usd: parseFloat(p) * parseFloat(q) }));
+          const asks = raw.asks.map(([p, q]: any[]) => ({ price: parseFloat(p), quantity: parseFloat(q), usd: parseFloat(p) * parseFloat(q) }));
 
           const totalBidUsd = bids.reduce((s: number, b: any) => s + b.usd, 0);
           const totalAskUsd = asks.reduce((s: number, a: any) => s + a.usd, 0);
@@ -2697,7 +2668,7 @@ export async function registerRoutes(
       const { symbol } = z.object({ symbol: z.string().min(1) }).parse(req.body);
       const sym = symbol.toLowerCase();
       await storage.addTrackedCoin(sym);
-      if (reconnectBinanceWs) reconnectBinanceWs();
+      if (reconnectKrakenWs) reconnectKrakenWs();
       const coins = await storage.getTrackedCoins();
       res.json(coins.map(c => c.symbol));
     } catch (e) {
@@ -2713,7 +2684,7 @@ export async function registerRoutes(
     try {
       const sym = req.params.symbol.toLowerCase();
       await storage.removeTrackedCoin(sym);
-      if (reconnectBinanceWs) reconnectBinanceWs();
+      if (reconnectKrakenWs) reconnectKrakenWs();
       const coins = await storage.getTrackedCoins();
       res.json(coins.map(c => c.symbol));
     } catch {
@@ -3295,8 +3266,8 @@ export async function registerRoutes(
       }
 
       const [klinesRes, depthRes, fngRes] = await Promise.all([
-        fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=1h&limit=200`).then(r => r.ok ? r.json() : []),
-        fetch(`https://data-api.binance.vision/api/v3/depth?symbol=${symbol}&limit=50`).then(r => r.ok ? r.json() : { bids: [], asks: [] }),
+        fetchKrakenOHLC(symbol, "1h", 200),
+        fetchKrakenDepth(symbol, 50),
         fetch("https://api.alternative.me/fng/?limit=1&date_format=world").then(r => r.ok ? r.json() : null).catch(() => null),
       ]);
 
@@ -3666,10 +3637,8 @@ export async function registerRoutes(
         return res.json({ price: parseFloat(ticker.lastPrice) });
       }
       try {
-        const apiRes = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${symbol}`);
-        if (apiRes.ok) {
-          const data = await apiRes.json() as any;
-          const price = parseFloat(data.price) || 0;
+        const price = await fetchKrakenPrice(symbol);
+        if (price > 0) {
           return res.json({ price });
         }
       } catch {}
@@ -3683,7 +3652,7 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.sendStatus(401);
     try {
       const symbol = req.params.symbol.toUpperCase();
-      let currentPrice = await fetchBinancePrice(symbol);
+      let currentPrice = await fetchCurrentPrice(symbol);
 
       let sr: any = null;
       try {
@@ -3694,13 +3663,11 @@ export async function registerRoutes(
 
       if (!currentPrice && sr) currentPrice = sr.currentPrice;
 
-      const klineUrl = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=1d&limit=30`;
       let dailyData: { close: number; low: number; high: number; volume: number }[] = [];
       try {
-        const kRes = await fetch(klineUrl);
-        if (kRes.ok) {
-          const raw = await kRes.json();
-          dailyData = (raw as any[]).map((k: any) => ({
+        const dailyKlines = await fetchKrakenOHLC(symbol, "1d", 30);
+        if (dailyKlines.length > 0) {
+          dailyData = dailyKlines.map((k: any) => ({
             high: parseFloat(k[2]),
             low: parseFloat(k[3]),
             close: parseFloat(k[4]),
@@ -3774,7 +3741,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Maximum buy steps reached" });
       }
 
-      const currentPrice = await fetchBinancePrice(bot.symbol);
+      const currentPrice = await fetchCurrentPrice(bot.symbol);
       const execPrice = orderType === "limit" ? (requestedPrice || currentPrice) : currentPrice;
       if (!execPrice || execPrice <= 0) return res.status(400).json({ message: "Invalid price. Market data unavailable." });
 
@@ -3879,7 +3846,7 @@ export async function registerRoutes(
       const remainingQty = totalBought - totalSold;
       if (remainingQty <= 0) return res.status(400).json({ message: "No position to sell" });
 
-      const currentPrice = await fetchBinancePrice(bot.symbol);
+      const currentPrice = await fetchCurrentPrice(bot.symbol);
       const execPrice = orderType === "limit" ? (requestedPrice || currentPrice) : currentPrice;
       if (!execPrice || execPrice <= 0) return res.status(400).json({ message: "Invalid price. Market data unavailable." });
 
@@ -3913,7 +3880,7 @@ export async function registerRoutes(
       const bot = await storage.getAutopilotBot(userId, botId);
       if (!bot) return res.status(404).json({ message: "Bot not found" });
 
-      const currentPrice = await fetchBinancePrice(bot.symbol);
+      const currentPrice = await fetchCurrentPrice(bot.symbol);
       if (!currentPrice || currentPrice <= 0) {
         return res.status(400).json({ message: "Could not fetch current price" });
       }
