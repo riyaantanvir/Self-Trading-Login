@@ -1259,11 +1259,11 @@ export default function Dashboard() {
         <div className="flex items-center gap-1 sm:gap-2 mb-4 overflow-x-auto">
           {[
             { key: "all" as const, label: "All", icon: null },
+            { key: "signals" as const, label: "Signals", icon: Crosshair },
             { key: "watchlist" as const, label: "Watchlist", icon: Star },
             { key: "feargreed" as const, label: "F&G", icon: Gauge },
             { key: "news" as const, label: "News", icon: Newspaper },
             { key: "mmt" as const, label: "MMT", icon: Activity },
-            { key: "signals" as const, label: "Signals", icon: Crosshair },
           ].map((tab) => (
             <Button
               key={tab.key}
