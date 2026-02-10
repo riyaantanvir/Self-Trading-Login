@@ -401,6 +401,189 @@ function setupBinanceLiveStream(httpServer: Server) {
     }
   }, 2 * 60 * 1000);
 
+  const signalCooldowns = new Map<string, number>();
+  const SIGNAL_COOLDOWN_MS = 30 * 60 * 1000;
+
+  async function computeSupportResistance(symbol: string): Promise<{ supports: { price: number; touches: number }[]; resistances: { price: number; touches: number }[]; currentPrice: number } | null> {
+    try {
+      const url = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1h&limit=200`;
+      const response = await fetch(url);
+      if (!response.ok) return null;
+      const data = await response.json();
+      const candles = (data as any[]).map((k: any) => ({
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+      }));
+      const currentPrice = candles[candles.length - 1].close;
+      const tolerance = currentPrice * 0.005;
+      const levels: { price: number; strength: number; type: "support" | "resistance"; touches: number }[] = [];
+      for (let i = 2; i < candles.length - 2; i++) {
+        const c = candles[i];
+        const isSwingHigh = c.high > candles[i - 1].high && c.high > candles[i - 2].high && c.high > candles[i + 1].high && c.high > candles[i + 2].high;
+        const isSwingLow = c.low < candles[i - 1].low && c.low < candles[i - 2].low && c.low < candles[i + 1].low && c.low < candles[i + 2].low;
+        if (isSwingHigh) {
+          const existing = levels.find(l => Math.abs(l.price - c.high) < tolerance);
+          if (existing) { existing.touches++; existing.strength += c.volume; }
+          else levels.push({ price: c.high, strength: c.volume, type: c.high > currentPrice ? "resistance" : "support", touches: 1 });
+        }
+        if (isSwingLow) {
+          const existing = levels.find(l => Math.abs(l.price - c.low) < tolerance);
+          if (existing) { existing.touches++; existing.strength += c.volume; }
+          else levels.push({ price: c.low, strength: c.volume, type: c.low > currentPrice ? "resistance" : "support", touches: 1 });
+        }
+      }
+      levels.sort((a, b) => b.touches * b.strength - a.touches * a.strength);
+      return {
+        supports: levels.filter(l => l.type === "support").slice(0, 5),
+        resistances: levels.filter(l => l.type === "resistance").slice(0, 5),
+        currentPrice,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  setInterval(async () => {
+    try {
+      if (tickerMap.size === 0) return;
+      const usersWithSignals = await storage.getUsersWithSignalAlerts();
+      if (usersWithSignals.length === 0) return;
+
+      const now = Date.now();
+      if (scannerCache.data && now - scannerCache.timestamp < 60000) {
+      } else {
+        const symbols = TRACKED_SYMBOLS.map(s => s.toUpperCase());
+        const results: any[] = [];
+        const batchSize = 5;
+        for (let i = 0; i < symbols.length; i += batchSize) {
+          const batch = symbols.slice(i, i + batchSize);
+          const promises = batch.map(async (sym) => {
+            try {
+              const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=1h&limit=50`;
+              const response = await fetch(url);
+              if (!response.ok) return null;
+              const data = await response.json();
+              const closes = (data as any[]).map((k: any) => parseFloat(k[4]));
+              const volumes = (data as any[]).map((k: any) => parseFloat(k[5]));
+              const highs = (data as any[]).map((k: any) => parseFloat(k[2]));
+              const lows = (data as any[]).map((k: any) => parseFloat(k[3]));
+              const currentPrice = closes[closes.length - 1];
+              const rsi = computeRSI(closes, 14);
+              const ema9 = computeEMAArray(closes, 9);
+              const ema21 = computeEMAArray(closes, 21);
+              const ema50 = computeEMAArray(closes, 50);
+              const macdLine = ema9[ema9.length - 1] - ema21[ema21.length - 1];
+              const prevMacdLine = ema9[ema9.length - 2] - ema21[ema21.length - 2];
+              const avgVol = volumes.slice(0, -1).reduce((a: number, b: number) => a + b, 0) / (volumes.length - 1);
+              const currentVol = volumes[volumes.length - 1];
+              const volRatio = avgVol > 0 ? currentVol / avgVol : 1;
+              let signalScore = 0;
+              if (rsi < 30) signalScore += 2; else if (rsi < 40) signalScore += 1;
+              else if (rsi > 70) signalScore -= 2; else if (rsi > 60) signalScore -= 1;
+              if (ema9[ema9.length - 1] > ema21[ema21.length - 1]) signalScore += 1; else signalScore -= 1;
+              if (currentPrice > ema50[ema50.length - 1]) signalScore += 1; else signalScore -= 1;
+              if (macdLine > 0 && prevMacdLine <= 0) signalScore += 1;
+              if (macdLine < 0 && prevMacdLine >= 0) signalScore -= 1;
+              if (volRatio > 2) signalScore += (macdLine > 0 ? 1 : -1);
+              let signal = "neutral";
+              if (signalScore >= 3) signal = "strong_buy";
+              else if (signalScore >= 1) signal = "buy";
+              else if (signalScore <= -3) signal = "strong_sell";
+              else if (signalScore <= -1) signal = "sell";
+              return { symbol: sym, price: currentPrice, rsi, signal, signalScore, volRatio };
+            } catch { return null; }
+          });
+          const batchResults = await Promise.all(promises);
+          results.push(...batchResults.filter(Boolean));
+        }
+        scannerCache.data = results;
+        scannerCache.timestamp = now;
+      }
+
+      const scannerResults = scannerCache.data || [];
+      const buySignals = scannerResults.filter((r: any) => r.signal === "buy" || r.signal === "strong_buy");
+      const sellSignals = scannerResults.filter((r: any) => r.signal === "strong_sell");
+
+      const alertCandidates: { symbol: string; price: number; signal: string; rsi: number; nearestLevel: number; levelType: string; distancePct: number; signalScore: number }[] = [];
+
+      for (const sig of buySignals) {
+        const cooldownKey = `buy_${sig.symbol}`;
+        if (signalCooldowns.has(cooldownKey) && now - signalCooldowns.get(cooldownKey)! < SIGNAL_COOLDOWN_MS) continue;
+        const sr = await computeSupportResistance(sig.symbol);
+        if (!sr || sr.supports.length === 0) continue;
+        const nearestSupport = sr.supports.reduce((closest: any, s: any) => {
+          const dist = Math.abs(sig.price - s.price) / sig.price;
+          return dist < closest.dist ? { price: s.price, dist, touches: s.touches } : closest;
+        }, { price: 0, dist: Infinity, touches: 0 });
+        if (nearestSupport.dist <= 0.03) {
+          alertCandidates.push({
+            symbol: sig.symbol, price: sig.price, signal: sig.signal, rsi: sig.rsi,
+            nearestLevel: nearestSupport.price, levelType: "support",
+            distancePct: +(nearestSupport.dist * 100).toFixed(2), signalScore: sig.signalScore,
+          });
+          signalCooldowns.set(cooldownKey, now);
+        }
+      }
+
+      for (const sig of sellSignals) {
+        const cooldownKey = `sell_${sig.symbol}`;
+        if (signalCooldowns.has(cooldownKey) && now - signalCooldowns.get(cooldownKey)! < SIGNAL_COOLDOWN_MS) continue;
+        const sr = await computeSupportResistance(sig.symbol);
+        if (!sr || sr.resistances.length === 0) continue;
+        const nearestResistance = sr.resistances.reduce((closest: any, r: any) => {
+          const dist = Math.abs(sig.price - r.price) / sig.price;
+          return dist < closest.dist ? { price: r.price, dist, touches: r.touches } : closest;
+        }, { price: 0, dist: Infinity, touches: 0 });
+        if (nearestResistance.dist <= 0.03) {
+          alertCandidates.push({
+            symbol: sig.symbol, price: sig.price, signal: sig.signal, rsi: sig.rsi,
+            nearestLevel: nearestResistance.price, levelType: "resistance",
+            distancePct: +(nearestResistance.dist * 100).toFixed(2), signalScore: sig.signalScore,
+          });
+          signalCooldowns.set(cooldownKey, now);
+        }
+      }
+
+      if (alertCandidates.length === 0) return;
+
+      for (const user of usersWithSignals) {
+        if (!user.telegramBotToken || !user.telegramChatId) continue;
+        for (const candidate of alertCandidates) {
+          const coin = candidate.symbol.replace("USDT", "");
+          const isBuy = candidate.signal === "buy" || candidate.signal === "strong_buy";
+          const signalLabel = candidate.signal.replace("_", " ").toUpperCase();
+          const actionEmoji = isBuy ? "\u{1F7E2}" : "\u{1F534}";
+          const zoneType = isBuy ? "Support Zone" : "Resistance Zone";
+          const recommendation = isBuy
+            ? `Consider buying near $${candidate.nearestLevel.toFixed(2)} support with a stop below`
+            : `Consider taking profit or selling near $${candidate.nearestLevel.toFixed(2)} resistance`;
+
+          const msg = `${actionEmoji} <b>Smart Signal: ${signalLabel}</b>\n\n` +
+            `<b>${coin}</b> @ $${candidate.price.toFixed(2)}\n` +
+            `RSI: ${candidate.rsi.toFixed(1)} | Score: ${candidate.signalScore}\n\n` +
+            `<b>${zoneType}:</b> $${candidate.nearestLevel.toFixed(2)}\n` +
+            `Distance: ${candidate.distancePct}% from level\n\n` +
+            `<i>${recommendation}</i>\n\n` +
+            `- Self Treding Smart Alerts`;
+
+          try {
+            await sendTelegramMessage(user.telegramBotToken, user.telegramChatId, msg);
+          } catch (err) {
+            console.error(`[Signal Alert] Failed to send to user ${user.id}:`, err);
+          }
+        }
+      }
+
+      if (alertCandidates.length > 0) {
+        console.log(`[Signal Alerts] Sent ${alertCandidates.length} signal(s) to ${usersWithSignals.length} user(s)`);
+      }
+    } catch (err) {
+      console.error("[Signal Alerts] Error:", err);
+    }
+  }, 60000);
+
   connectBinance();
 
   wss.on("connection", (ws) => {
@@ -1914,6 +2097,24 @@ export async function registerRoutes(
     const schema = z.object({ enabled: z.boolean() });
     const { enabled } = schema.parse(req.body);
     await storage.updateNewsAlerts(req.user!.id, enabled);
+    res.json({ success: true, enabled });
+  });
+
+  app.get("/api/user/signal-alerts", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = await storage.getUser(req.user!.id);
+    res.json({ enabled: user?.signalAlertsEnabled || false });
+  });
+
+  app.post("/api/user/signal-alerts", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = await storage.getUser(req.user!.id);
+    if (!user?.telegramBotToken || !user?.telegramChatId) {
+      return res.status(400).json({ message: "Please configure Telegram settings first before enabling signal alerts" });
+    }
+    const schema = z.object({ enabled: z.boolean() });
+    const { enabled } = schema.parse(req.body);
+    await storage.updateSignalAlerts(req.user!.id, enabled);
     res.json({ success: true, enabled });
   });
 

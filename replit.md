@@ -62,6 +62,8 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `GET /api/market/volume-profile/:symbol` - Volume profile with VWAP, POC, value area (200 candles 1H, 30 price buckets, cached 30s)
 - `GET /api/market/momentum` - Momentum heatmap for all tracked coins (1H/4H/12H/24H momentum, scoring, cached 15s)
 - `GET /api/market/orderflow` - Order flow imbalance for top 8 coins (bid/ask USD volume, near-price imbalance, pressure signals, cached 10s)
+- `GET /api/user/signal-alerts` - Get smart signal alert toggle state
+- `POST /api/user/signal-alerts` - Enable/disable smart signal alerts (body: { enabled })
 - `POST /api/user/telegram` - Save Telegram bot token and chat ID
 - `POST /api/user/telegram/test` - Send test Telegram message
 
@@ -84,6 +86,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Cancel returns reserved balance (buy) or holdings (sell)
 
 ## Recent Changes
+- Feb 2026: Added Smart Signal Alerts - background scanner checks every 60s for buy signals near support and strong sell signals near resistance, sends Telegram alerts with S/R zone info, 30min cooldown per coin, toggleable per user on Alerts page
 - Feb 2026: Expanded Trade Signals to 11 sub-sections: added Divergence (RSI/MACD divergence detector), Multi-TF (5m/15m/1H/4H/1D alignment), Vol Profile (VWAP/POC/value area), Momentum (1H/4H/12H/24H heatmap), Order Flow (bid/ask imbalance)
 - Feb 2026: Added Trade Signals tab with 6 sub-sections: Scanner (RSI/volume/trend filter), Support & Resistance (swing high/low levels), Buy/Sell Signals (combined indicator cards), Correlation Map (72H price correlation heatmap), Whale Watch (batch order book walls), Market Pulse (breadth, sentiment, F&G summary)
 - Feb 2026: MMT tab now has sub-navigation with 7 separate sections: Overview, Heatmap, Volume, Trends, Order Book, Liquidation, Sentiment (each in its own view)

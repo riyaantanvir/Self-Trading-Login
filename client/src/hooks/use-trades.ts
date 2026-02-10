@@ -283,6 +283,29 @@ export function useToggleNewsAlerts() {
   });
 }
 
+export function useSignalAlerts() {
+  return useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/user/signal-alerts"],
+    queryFn: async () => {
+      const res = await fetch("/api/user/signal-alerts", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch signal alert settings");
+      return await res.json();
+    },
+  });
+}
+
+export function useToggleSignalAlerts() {
+  return useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await apiRequest("POST", "/api/user/signal-alerts", { enabled });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/user/signal-alerts"] });
+    },
+  });
+}
+
 export function useTodayPnl() {
   return useQuery({
     queryKey: ["/api/portfolio/today-pnl"],

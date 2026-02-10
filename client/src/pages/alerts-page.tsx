@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { LayoutShell } from "@/components/layout-shell";
-import { useAlerts, useCreateAlert, useDeleteAlert, useTickers, useSaveTelegramSettings, useTestTelegram, useNewsAlerts, useToggleNewsAlerts } from "@/hooks/use-trades";
+import { useAlerts, useCreateAlert, useDeleteAlert, useTickers, useSaveTelegramSettings, useTestTelegram, useNewsAlerts, useToggleNewsAlerts, useSignalAlerts, useToggleSignalAlerts } from "@/hooks/use-trades";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -20,6 +20,8 @@ export default function AlertsPage() {
   const testTelegram = useTestTelegram();
   const { data: newsAlertData } = useNewsAlerts();
   const toggleNewsAlerts = useToggleNewsAlerts();
+  const { data: signalAlertData } = useSignalAlerts();
+  const toggleSignalAlerts = useToggleSignalAlerts();
 
   const [showCreate, setShowCreate] = useState(false);
   const [showTgSettings, setShowTgSettings] = useState(false);
@@ -201,6 +203,60 @@ export default function AlertsPage() {
                     data-testid="button-toggle-news-alerts"
                   >
                     {newsAlertData?.enabled ? (
+                      <>
+                        <Bell className="w-3.5 h-3.5" />
+                        On
+                      </>
+                    ) : (
+                      <>
+                        <BellOff className="w-3.5 h-3.5" />
+                        Off
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {hasTelegramSetup && (
+              <div className="border-t border-border pt-3 mt-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <div className="text-sm font-medium" data-testid="text-signal-alerts-label">Smart Signal Alerts</div>
+                      <p className="text-[10px] text-muted-foreground">
+                        Get notified when buy signals appear near support or strong sell signals near resistance (checked every 60s, 30min cooldown per coin)
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant={signalAlertData?.enabled ? "default" : "outline"}
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={() => {
+                      const newState = !signalAlertData?.enabled;
+                      toggleSignalAlerts.mutate(newState, {
+                        onSuccess: () => {
+                          toast({
+                            title: newState ? "Smart signal alerts enabled" : "Smart signal alerts disabled",
+                            description: newState
+                              ? "You'll receive buy/sell signals near key S/R zones on Telegram"
+                              : "Smart signal alerts have been turned off",
+                          });
+                        },
+                        onError: (err: any) => {
+                          toast({
+                            title: "Error",
+                            description: err.message || "Failed to update signal alert settings",
+                            variant: "destructive",
+                          });
+                        },
+                      });
+                    }}
+                    disabled={toggleSignalAlerts.isPending}
+                    data-testid="button-toggle-signal-alerts"
+                  >
+                    {signalAlertData?.enabled ? (
                       <>
                         <Bell className="w-3.5 h-3.5" />
                         On
