@@ -1,4 +1,4 @@
-import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin } from "@shared/schema";
+import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, apiKeys, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin, type ApiKey } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lt } from "drizzle-orm";
 
@@ -33,6 +33,10 @@ export interface IStorage {
   getTrackedCoins(): Promise<TrackedCoin[]>;
   addTrackedCoin(symbol: string): Promise<TrackedCoin>;
   removeTrackedCoin(symbol: string): Promise<void>;
+
+  getApiKey(keyName: string): Promise<ApiKey | undefined>;
+  getAllApiKeys(): Promise<ApiKey[]>;
+  upsertApiKey(keyName: string, apiKeyVal: string, apiSecret: string): Promise<ApiKey>;
 
   getPriceAlerts(userId: number): Promise<PriceAlert[]>;
   getActivePriceAlerts(): Promise<PriceAlert[]>;
@@ -213,6 +217,30 @@ export class DatabaseStorage implements IStorage {
 
   async triggerPriceAlert(alertId: number): Promise<void> {
     await db.update(priceAlerts).set({ triggered: true, isActive: false, triggeredAt: new Date() }).where(eq(priceAlerts.id, alertId));
+  }
+
+  async getApiKey(keyName: string): Promise<ApiKey | undefined> {
+    const [key] = await db.select().from(apiKeys).where(eq(apiKeys.keyName, keyName));
+    return key;
+  }
+
+  async getAllApiKeys(): Promise<ApiKey[]> {
+    return await db.select().from(apiKeys);
+  }
+
+  async upsertApiKey(keyName: string, apiKeyVal: string, apiSecret: string): Promise<ApiKey> {
+    const existing = await this.getApiKey(keyName);
+    if (existing) {
+      const [updated] = await db.update(apiKeys)
+        .set({ apiKey: apiKeyVal, apiSecret: apiSecret })
+        .where(eq(apiKeys.keyName, keyName))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(apiKeys)
+      .values({ keyName, apiKey: apiKeyVal, apiSecret: apiSecret })
+      .returning();
+    return created;
   }
 }
 

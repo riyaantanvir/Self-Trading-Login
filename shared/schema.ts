@@ -71,6 +71,17 @@ export const insertTrackedCoinSchema = createInsertSchema(trackedCoins).omit({ i
 export type TrackedCoin = typeof trackedCoins.$inferSelect;
 export type InsertTrackedCoin = z.infer<typeof insertTrackedCoinSchema>;
 
+export const apiKeys = pgTable("api_keys", {
+  id: serial("id").primaryKey(),
+  keyName: text("key_name").notNull().unique(),
+  apiKey: text("api_key").notNull().default(""),
+  apiSecret: text("api_secret").notNull().default(""),
+});
+
+export const insertApiKeySchema = createInsertSchema(apiKeys).omit({ id: true });
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertTradeSchema = createInsertSchema(trades).omit({ id: true, userId: true, timestamp: true, total: true });
 export const insertPortfolioSchema = createInsertSchema(portfolio).omit({ id: true });

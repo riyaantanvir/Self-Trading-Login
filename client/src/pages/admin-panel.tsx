@@ -20,6 +20,12 @@ import {
   Search,
   X,
   Trash2,
+  Key,
+  Eye,
+  EyeOff,
+  Save,
+  Check,
+  Shield,
 } from "lucide-react";
 import {
   Dialog,
@@ -29,7 +35,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-type AdminView = "overview" | "users" | "coins";
+type AdminView = "overview" | "users" | "coins" | "apikeys";
 
 interface AdminUser {
   id: number;
@@ -47,6 +53,14 @@ export default function AdminPanel() {
   const [topUpAmount, setTopUpAmount] = useState("");
   const [coinSearch, setCoinSearch] = useState("");
   const [addingCoin, setAddingCoin] = useState("");
+  const [spotKey, setSpotKey] = useState("");
+  const [spotSecret, setSpotSecret] = useState("");
+  const [futuresKey, setFuturesKey] = useState("");
+  const [futuresSecret, setFuturesSecret] = useState("");
+  const [showSpotKey, setShowSpotKey] = useState(false);
+  const [showSpotSecret, setShowSpotSecret] = useState(false);
+  const [showFuturesKey, setShowFuturesKey] = useState(false);
+  const [showFuturesSecret, setShowFuturesSecret] = useState(false);
 
   const usersQuery = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
@@ -56,6 +70,19 @@ export default function AdminPanel() {
   const trackedCoinsQuery = useQuery<string[]>({
     queryKey: ["/api/admin/tracked-coins"],
     enabled: view === "coins",
+  });
+
+  interface MaskedApiKey {
+    keyName: string;
+    apiKey: string;
+    apiSecret: string;
+    hasKey: boolean;
+    hasSecret: boolean;
+  }
+
+  const apiKeysQuery = useQuery<MaskedApiKey[]>({
+    queryKey: ["/api/admin/api-keys"],
+    enabled: view === "apikeys",
   });
 
   const topUpMutation = useMutation({
@@ -110,6 +137,28 @@ export default function AdminPanel() {
     },
   });
 
+  const saveApiKeyMutation = useMutation({
+    mutationFn: async ({ keyName, apiKey, apiSecret }: { keyName: string; apiKey: string; apiSecret: string }) => {
+      const res = await apiRequest("POST", "/api/admin/api-keys", { keyName, apiKey, apiSecret });
+      return res.json();
+    },
+    onSuccess: (_data, variables) => {
+      const label = variables.keyName === "binance_spot" ? "Binance Spot" : "Binance Futures";
+      toast({ title: "Saved", description: `${label} API keys saved successfully` });
+      if (variables.keyName === "binance_spot") {
+        setSpotKey("");
+        setSpotSecret("");
+      } else {
+        setFuturesKey("");
+        setFuturesSecret("");
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/api-keys"] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed", description: error?.message || "Could not save API key", variant: "destructive" });
+    },
+  });
+
   if (!user?.isAdmin) {
     return <Redirect to="/" />;
   }
@@ -119,6 +168,208 @@ export default function AdminPanel() {
   const filteredCoins = trackedCoinsQuery.data?.filter(c =>
     c.toLowerCase().includes(coinSearch.toLowerCase())
   ) || [];
+
+  const spotData = apiKeysQuery.data?.find(k => k.keyName === "binance_spot");
+  const futuresData = apiKeysQuery.data?.find(k => k.keyName === "binance_futures");
+
+  if (view === "apikeys") {
+    return (
+      <LayoutShell>
+        <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setView("overview")}
+              data-testid="button-back-overview"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div>
+              <h1 className="text-xl font-bold text-foreground" data-testid="text-admin-apikeys-title">
+                API Key Management
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                Configure your Binance Spot and Futures API keys
+              </p>
+            </div>
+          </div>
+
+          {apiKeysQuery.isLoading && (
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {!apiKeysQuery.isLoading && (
+            <div className="space-y-4">
+              <Card>
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-md bg-[#f0b90b]/10 flex items-center justify-center flex-shrink-0">
+                      <Key className="w-5 h-5 text-[#f0b90b]" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-foreground text-sm">Binance Spot API</div>
+                      <p className="text-xs text-muted-foreground">
+                        {spotData?.hasKey ? (
+                          <span className="flex items-center gap-1">
+                            <Check className="w-3 h-3 text-[#0ecb81]" />
+                            Configured - {spotData.apiKey}
+                          </span>
+                        ) : "Not configured"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">API Key</label>
+                      <div className="relative">
+                        <Input
+                          type={showSpotKey ? "text" : "password"}
+                          placeholder="Enter Spot API Key..."
+                          value={spotKey}
+                          onChange={(e) => setSpotKey(e.target.value)}
+                          data-testid="input-spot-api-key"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1/2 -translate-y-1/2"
+                          onClick={() => setShowSpotKey(!showSpotKey)}
+                          data-testid="button-toggle-spot-key"
+                        >
+                          {showSpotKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">API Secret</label>
+                      <div className="relative">
+                        <Input
+                          type={showSpotSecret ? "text" : "password"}
+                          placeholder="Enter Spot API Secret..."
+                          value={spotSecret}
+                          onChange={(e) => setSpotSecret(e.target.value)}
+                          data-testid="input-spot-api-secret"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1/2 -translate-y-1/2"
+                          onClick={() => setShowSpotSecret(!showSpotSecret)}
+                          data-testid="button-toggle-spot-secret"
+                        >
+                          {showSpotSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <Button
+                      disabled={(!spotKey && !spotSecret) || saveApiKeyMutation.isPending}
+                      onClick={() => saveApiKeyMutation.mutate({ keyName: "binance_spot", apiKey: spotKey, apiSecret: spotSecret })}
+                      data-testid="button-save-spot"
+                    >
+                      {saveApiKeyMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                      ) : (
+                        <Save className="w-4 h-4 mr-1" />
+                      )}
+                      Save Spot API Keys
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-md bg-[#8b5cf6]/10 flex items-center justify-center flex-shrink-0">
+                      <Shield className="w-5 h-5 text-[#8b5cf6]" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-foreground text-sm">Binance Futures API</div>
+                      <p className="text-xs text-muted-foreground">
+                        {futuresData?.hasKey ? (
+                          <span className="flex items-center gap-1">
+                            <Check className="w-3 h-3 text-[#0ecb81]" />
+                            Configured - {futuresData.apiKey}
+                          </span>
+                        ) : "Not configured"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">API Key</label>
+                      <div className="relative">
+                        <Input
+                          type={showFuturesKey ? "text" : "password"}
+                          placeholder="Enter Futures API Key..."
+                          value={futuresKey}
+                          onChange={(e) => setFuturesKey(e.target.value)}
+                          data-testid="input-futures-api-key"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1/2 -translate-y-1/2"
+                          onClick={() => setShowFuturesKey(!showFuturesKey)}
+                          data-testid="button-toggle-futures-key"
+                        >
+                          {showFuturesKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">API Secret</label>
+                      <div className="relative">
+                        <Input
+                          type={showFuturesSecret ? "text" : "password"}
+                          placeholder="Enter Futures API Secret..."
+                          value={futuresSecret}
+                          onChange={(e) => setFuturesSecret(e.target.value)}
+                          data-testid="input-futures-api-secret"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1/2 -translate-y-1/2"
+                          onClick={() => setShowFuturesSecret(!showFuturesSecret)}
+                          data-testid="button-toggle-futures-secret"
+                        >
+                          {showFuturesSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                    <Button
+                      disabled={(!futuresKey && !futuresSecret) || saveApiKeyMutation.isPending}
+                      onClick={() => saveApiKeyMutation.mutate({ keyName: "binance_futures", apiKey: futuresKey, apiSecret: futuresSecret })}
+                      data-testid="button-save-futures"
+                    >
+                      {saveApiKeyMutation.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin mr-1" />
+                      ) : (
+                        <Save className="w-4 h-4 mr-1" />
+                      )}
+                      Save Futures API Keys
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="p-3 rounded-md bg-muted/50 border border-border">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Your API keys are stored securely. Only masked versions are displayed after saving. Make sure your Binance API keys have the correct permissions enabled (Spot/Futures trading).
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      </LayoutShell>
+    );
+  }
 
   if (view === "coins") {
     return (
@@ -464,6 +715,26 @@ export default function AdminPanel() {
                   <div className="font-semibold text-foreground text-sm">Coin Management</div>
                   <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
                     Add or remove coins from your tracked market list
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card
+            className="hover-elevate cursor-pointer"
+            onClick={() => setView("apikeys")}
+            data-testid="card-admin-api-keys"
+          >
+            <CardContent className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-md bg-[#3b82f6]/10 flex items-center justify-center flex-shrink-0">
+                  <Key className="w-5 h-5 text-[#3b82f6]" />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-semibold text-foreground text-sm">API Keys</div>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    Manage Binance Spot and Futures API keys
                   </p>
                 </div>
               </div>

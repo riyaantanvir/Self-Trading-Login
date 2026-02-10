@@ -68,6 +68,8 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `POST /api/user/signal-alerts` - Enable/disable smart signal alerts (body: { enabled })
 - `POST /api/user/telegram` - Save Telegram bot token and chat ID
 - `POST /api/user/telegram/test` - Send test Telegram message
+- `GET /api/admin/api-keys` - Get all API keys (masked, admin-only)
+- `POST /api/admin/api-keys` - Save/update API key (body: { keyName, apiKey, apiSecret }, admin-only)
 
 ## Admin Credentials
 - Username: Admin
@@ -88,6 +90,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Cancel returns reserved balance (buy) or holdings (sell)
 
 ## Recent Changes
+- Feb 2026: Added API Key Management in Admin Panel - admin can save/update Binance Spot and Futures API keys; keys stored in DB (api_keys table), masked display, show/hide toggle
 - Feb 2026: Added Coin Management in Admin Panel - admin can add/remove any Binance coin from tracked list; DB-driven coin list (tracked_coins table), WebSocket auto-reconnects when list changes
 - Feb 2026: Added Settings page (/settings) - moved logout from header, admin panel link for admins
 - Feb 2026: Added Quick Analysis popup on token detail page (BarChart3 button in header) - aggregated coin analysis showing S/R zones, trend, RSI/MACD/volume explained simply, sentiment, Fear & Greed, buy/sell verdict for beginners

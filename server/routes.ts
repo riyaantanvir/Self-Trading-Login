@@ -2326,6 +2326,44 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/admin/api-keys", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
+    try {
+      const keys = await storage.getAllApiKeys();
+      const masked = keys.map(k => ({
+        keyName: k.keyName,
+        apiKey: k.apiKey ? `${k.apiKey.slice(0, 6)}...${k.apiKey.slice(-4)}` : "",
+        apiSecret: k.apiSecret ? `${k.apiSecret.slice(0, 4)}...${k.apiSecret.slice(-4)}` : "",
+        hasKey: !!k.apiKey,
+        hasSecret: !!k.apiSecret,
+      }));
+      res.json(masked);
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/api-keys", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
+    try {
+      const schema = z.object({
+        keyName: z.string().min(1),
+        apiKey: z.string(),
+        apiSecret: z.string(),
+      });
+      const { keyName, apiKey, apiSecret } = schema.parse(req.body);
+      await storage.upsertApiKey(keyName, apiKey, apiSecret);
+      res.json({ success: true, keyName });
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   const coinAnalysisCache: { [key: string]: { data: any; timestamp: number } } = {};
   app.get("/api/market/coin-analysis/:symbol", async (req, res) => {
     try {
