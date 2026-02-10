@@ -47,11 +47,41 @@ export async function getBinanceAccountInfo(
     });
     const json = await res.json() as any;
     if (json.code && json.msg) {
+      console.error("[Binance] API error:", json.code, json.msg);
       return { success: false, error: json.msg };
     }
+    const nonZero = (json.balances || []).filter((b: any) => parseFloat(b.free) > 0 || parseFloat(b.locked) > 0);
+    console.log("[Binance] Spot balances with funds:", JSON.stringify(nonZero));
     return { success: true, balances: json.balances || [] };
   } catch (err: any) {
     console.error("[Binance] getAccountInfo error:", err);
+    return { success: false, error: err.message || "Network error" };
+  }
+}
+
+export async function getBinanceFundingBalance(
+  creds: BinanceCredentials
+): Promise<{ success: boolean; balances?: { asset: string; free: string; locked: string; freeze: string }[]; error?: string }> {
+  try {
+    const signedParams = buildSignedParams(creds);
+    const url = `${BINANCE_BASE_URL}/sapi/v1/asset/get-funding-asset?${signedParams}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "X-MBX-APIKEY": creds.apiKey,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: signedParams,
+    });
+    const json = await res.json() as any;
+    if (json.code && json.msg) {
+      console.error("[Binance] Funding API error:", json.code, json.msg);
+      return { success: false, error: json.msg };
+    }
+    console.log("[Binance] Funding balances:", JSON.stringify(json));
+    return { success: true, balances: json };
+  } catch (err: any) {
+    console.error("[Binance] getFundingBalance error:", err);
     return { success: false, error: err.message || "Network error" };
   }
 }

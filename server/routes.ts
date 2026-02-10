@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, hashPassword } from "./auth";
 import { z } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
-import { getBinanceUsdtBalance, getBinanceAllBalances, placeBinanceOrder, validateBinanceCredentials } from "./binance-trade";
+import { getBinanceUsdtBalance, getBinanceAllBalances, placeBinanceOrder, validateBinanceCredentials, getBinanceFundingBalance, getBinanceAccountInfo } from "./binance-trade";
 
 async function sendTelegramMessage(botToken: string, chatId: string, message: string): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -2477,16 +2477,28 @@ export async function registerRoutes(
       return res.status(400).json({ message: "Binance API keys not configured" });
     }
 
-    const result = await getBinanceUsdtBalance({
-      apiKey: user.binanceApiKey,
-      apiSecret: user.binanceApiSecret,
-    });
+    const creds = { apiKey: user.binanceApiKey, apiSecret: user.binanceApiSecret };
 
-    if (!result.success) {
-      return res.status(500).json({ message: result.error });
+    const spotResult = await getBinanceUsdtBalance(creds);
+    let spotBalance = spotResult.success ? (spotResult.balance || 0) : 0;
+
+    let fundingBalance = 0;
+    try {
+      const fundingResult = await getBinanceFundingBalance(creds);
+      if (fundingResult.success && fundingResult.balances) {
+        const usdtFunding = fundingResult.balances.find((b: any) => b.asset === "USDT");
+        if (usdtFunding) {
+          fundingBalance = parseFloat(usdtFunding.free || "0");
+        }
+      }
+    } catch (e) {
+      console.log("[Binance] Funding balance fetch failed, using spot only");
     }
 
-    res.json({ balance: result.balance });
+    const totalBalance = spotBalance + fundingBalance;
+    console.log(`[Binance] Balance breakdown - Spot: ${spotBalance}, Funding: ${fundingBalance}, Total: ${totalBalance}`);
+
+    res.json({ balance: totalBalance, spotBalance, fundingBalance });
   });
 
   app.get("/api/binance/balances", async (req, res) => {
@@ -2496,16 +2508,33 @@ export async function registerRoutes(
       return res.status(400).json({ message: "Binance API keys not configured" });
     }
 
-    const result = await getBinanceAllBalances({
-      apiKey: user.binanceApiKey,
-      apiSecret: user.binanceApiSecret,
-    });
+    const creds = { apiKey: user.binanceApiKey, apiSecret: user.binanceApiSecret };
 
-    if (!result.success) {
-      return res.status(500).json({ message: result.error });
+    const spotResult = await getBinanceAllBalances(creds);
+    const balances: { currency: string; available: number; balance: number; wallet: string }[] = [];
+
+    if (spotResult.success && spotResult.balances) {
+      spotResult.balances.forEach(b => {
+        balances.push({ ...b, wallet: "spot" });
+      });
     }
 
-    res.json({ balances: result.balances });
+    try {
+      const fundingResult = await getBinanceFundingBalance(creds);
+      if (fundingResult.success && fundingResult.balances) {
+        fundingResult.balances.forEach((b: any) => {
+          const free = parseFloat(b.free || "0");
+          const locked = parseFloat(b.locked || "0");
+          if (free > 0 || locked > 0) {
+            balances.push({ currency: b.asset, available: free, balance: free + locked, wallet: "funding" });
+          }
+        });
+      }
+    } catch (e) {
+      console.log("[Binance] Funding balances fetch failed, showing spot only");
+    }
+
+    res.json({ balances });
   });
 
   app.get("/api/alerts", async (req, res) => {
