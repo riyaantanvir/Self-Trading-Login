@@ -2,12 +2,14 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Express } from "express";
 import session from "express-session";
+import connectPgSimple from "connect-pg-simple";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { storage } from "./storage";
 import { User, users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { db } from "./db";
+import { pool } from "./db";
 
 const scryptAsync = promisify(scrypt);
 
@@ -25,16 +27,23 @@ async function comparePasswords(supplied: string, stored: string) {
 }
 
 export function setupAuth(app: Express) {
+  const PgSession = connectPgSimple(session);
+
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "r8q,+&1LM3)CD*zAGpx1xm{NeQhc;#",
     resave: false,
     saveUninitialized: false,
-    store: undefined, // MemoryStore by default, suitable for simple dev
+    store: new PgSession({
+      pool,
+      tableName: "session",
+      createTableIfMissing: true,
+    }),
+    cookie: {
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    },
   };
 
-  if (app.get("env") === "production") {
-    app.set("trust proxy", 1);
-  }
+  app.set("trust proxy", 1);
 
   app.use(session(sessionSettings));
   app.use(passport.initialize());
