@@ -367,15 +367,18 @@ async function setupBinanceLiveStream(httpServer: Server) {
   }, 3000);
 
   async function fetchBinancePrice(symbol: string): Promise<number> {
-    const ticker = tickerMap.get(symbol);
+    const upperSymbol = symbol.toUpperCase();
+    const ticker = tickerMap.get(upperSymbol);
     if (ticker) return parseFloat(ticker.lastPrice);
     try {
-      const res = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${symbol}`);
+      const res = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${upperSymbol}`);
       if (res.ok) {
         const data = await res.json() as any;
         return parseFloat(data.price) || 0;
       }
-    } catch {}
+    } catch (e) {
+      console.error("[fetchBinancePrice] REST fallback error:", e);
+    }
     return 0;
   }
 
@@ -3420,13 +3423,41 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/dca/price/:symbol", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const symbol = req.params.symbol.toUpperCase();
+      const ticker = tickerMap.get(symbol);
+      if (ticker) {
+        return res.json({ price: parseFloat(ticker.lastPrice) });
+      }
+      try {
+        const apiRes = await fetch(`https://data-api.binance.vision/api/v3/ticker/price?symbol=${symbol}`);
+        if (apiRes.ok) {
+          const data = await apiRes.json() as any;
+          const price = parseFloat(data.price) || 0;
+          return res.json({ price });
+        }
+      } catch {}
+      res.json({ price: 0 });
+    } catch {
+      res.json({ price: 0 });
+    }
+  });
+
   app.get("/api/dca/support-zones/:symbol", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     try {
       const symbol = req.params.symbol.toUpperCase();
-      const sr = await computeSupportResistance(symbol);
       let currentPrice = await fetchBinancePrice(symbol);
-      if (!sr && !currentPrice) return res.json({ supports: [], resistances: [], currentPrice: 0 });
+
+      let sr: any = null;
+      try {
+        sr = await computeSupportResistance(symbol);
+      } catch (e) {
+        console.error("[DCA] computeSupportResistance error:", e);
+      }
+
       if (!currentPrice && sr) currentPrice = sr.currentPrice;
 
       const klineUrl = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=1d&limit=30`;
@@ -3451,13 +3482,14 @@ export async function registerRoutes(
       }
 
       res.json({
-        supports: sr ? sr.supports.map(s => ({ price: s.price, touches: s.touches })) : [],
-        resistances: sr ? sr.resistances.map(r => ({ price: r.price, touches: r.touches })) : [],
-        currentPrice,
+        supports: sr ? sr.supports.map((s: any) => ({ price: s.price, touches: s.touches })) : [],
+        resistances: sr ? sr.resistances.map((r: any) => ({ price: r.price, touches: r.touches })) : [],
+        currentPrice: currentPrice || 0,
         rsi: +rsi.toFixed(2),
         dailyData,
       });
-    } catch {
+    } catch (e) {
+      console.error("[DCA] support-zones error:", e);
       res.status(500).json({ message: "Failed to fetch support zones" });
     }
   });

@@ -534,20 +534,16 @@ function DcaBotDashboard({ bot, onBack }: { bot: AutopilotBot; onBack: () => voi
     refetchInterval: 5000,
   });
 
-  const { data: supportData } = useQuery<{
-    supports: { price: number; touches: number }[];
-    currentPrice: number;
-    rsi: number;
-  }>({
-    queryKey: ["/api/dca/support-zones", bot.symbol],
+  const { data: priceData } = useQuery<{ price: number }>({
+    queryKey: ["/api/dca/price", bot.symbol],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/dca/support-zones/${bot.symbol}`);
+      const res = await apiRequest("GET", `/api/dca/price/${bot.symbol}`);
       return res.json();
     },
-    refetchInterval: 10000,
+    refetchInterval: 5000,
   });
 
-  const currentPrice = supportData?.currentPrice || 0;
+  const currentPrice = priceData?.price || 0;
 
   const executedBuys = orders.filter(o => o.type === "buy");
   const executedSells = orders.filter(o => o.type === "sell");
@@ -754,8 +750,9 @@ function DcaBotDashboard({ bot, onBack }: { bot: AutopilotBot; onBack: () => voi
         <TabsContent value="buy" className="space-y-2 mt-3">
           {buySteps.map((step, i) => {
             const executed = executedBuys.find(o => o.step === step.step);
-            const entryPrice = config?.orderType === "limit" && config.limitPrice ? config.limitPrice : currentPrice;
-            const triggerPrice = i === 0 ? entryPrice : entryPrice * (1 - step.dropPercent / 100);
+            const firstBuy = executedBuys.find(o => o.step === 1);
+            const entryPrice = firstBuy ? firstBuy.price : (config?.orderType === "limit" && config.limitPrice ? config.limitPrice : currentPrice);
+            const triggerPrice = i === 0 ? (firstBuy ? firstBuy.price : entryPrice) : entryPrice * (1 - step.dropPercent / 100);
             const amount = totalCapital * (step.percent / 100);
             const maxReached = executedBuys.length >= (config?.maxBuySteps || 5);
             const canBuy = !executed && !maxReached && !supportBroken;
