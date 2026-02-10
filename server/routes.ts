@@ -1966,6 +1966,27 @@ export async function registerRoutes(
           return res.status(400).json({ message: `Kraken order failed: ${krakenResult.error}` });
         }
 
+        if (data.type === "buy") {
+          const existing = await storage.getPortfolioItem(user.id, data.symbol);
+          if (existing) {
+            const newQty = existing.quantity + data.quantity;
+            const newAvg = ((existing.avgBuyPrice * existing.quantity) + total) / newQty;
+            await storage.upsertPortfolioItem(user.id, data.symbol, newQty, newAvg);
+          } else {
+            await storage.upsertPortfolioItem(user.id, data.symbol, data.quantity, data.price);
+          }
+        } else {
+          const existing = await storage.getPortfolioItem(user.id, data.symbol);
+          if (existing) {
+            const newQty = existing.quantity - data.quantity;
+            if (newQty <= 0) {
+              await storage.upsertPortfolioItem(user.id, data.symbol, 0, 0);
+            } else {
+              await storage.upsertPortfolioItem(user.id, data.symbol, newQty, existing.avgBuyPrice);
+            }
+          }
+        }
+
         const trade = await storage.createTrade({
           symbol: data.symbol,
           type: data.type,
