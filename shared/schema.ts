@@ -200,3 +200,20 @@ export const autopilotBots = pgTable("autopilot_bots", {
 export const insertAutopilotBotSchema = createInsertSchema(autopilotBots).omit({ id: true, userId: true, totalTrades: true, totalPnl: true, lastTradeAt: true, createdAt: true });
 export type AutopilotBot = typeof autopilotBots.$inferSelect;
 export type InsertAutopilotBot = z.infer<typeof insertAutopilotBotSchema>;
+
+export const dcaBotOrders = pgTable("dca_bot_orders", {
+  id: serial("id").primaryKey(),
+  botId: integer("bot_id").notNull(),
+  userId: integer("user_id").notNull(),
+  step: integer("step").notNull(),
+  type: text("type").notNull(),
+  price: doublePrecision("price").notNull(),
+  quantity: doublePrecision("quantity").notNull(),
+  total: doublePrecision("total").notNull(),
+  status: text("status").default("executed").notNull(),
+  executedAt: timestamp("executed_at").defaultNow(),
+});
+
+export const insertDcaBotOrderSchema = createInsertSchema(dcaBotOrders).omit({ id: true, executedAt: true });
+export type DcaBotOrder = typeof dcaBotOrders.$inferSelect;
+export type InsertDcaBotOrder = z.infer<typeof insertDcaBotOrderSchema>;

@@ -1,4 +1,4 @@
-import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, apiKeys, futuresWallet, futuresPositions, futuresTrades, transfers, notifications, autopilotBots, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin, type ApiKey, type FuturesWallet, type FuturesPosition, type FuturesTrade, type Transfer, type Notification, type AutopilotBot } from "@shared/schema";
+import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, apiKeys, futuresWallet, futuresPositions, futuresTrades, transfers, notifications, autopilotBots, dcaBotOrders, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin, type ApiKey, type FuturesWallet, type FuturesPosition, type FuturesTrade, type Transfer, type Notification, type AutopilotBot, type DcaBotOrder } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lt, or, ilike } from "drizzle-orm";
 
@@ -476,6 +476,34 @@ export class DatabaseStorage implements IStorage {
         })
         .where(eq(autopilotBots.id, botId));
     }
+  }
+  async getDcaBotOrders(botId: number): Promise<DcaBotOrder[]> {
+    return await db.select().from(dcaBotOrders)
+      .where(eq(dcaBotOrders.botId, botId))
+      .orderBy(dcaBotOrders.executedAt);
+  }
+
+  async createDcaBotOrder(data: { botId: number; userId: number; step: number; type: string; price: number; quantity: number; total: number; status?: string }): Promise<DcaBotOrder> {
+    const [order] = await db.insert(dcaBotOrders).values({
+      botId: data.botId,
+      userId: data.userId,
+      step: data.step,
+      type: data.type,
+      price: data.price,
+      quantity: data.quantity,
+      total: data.total,
+      status: data.status || "executed",
+    }).returning();
+    return order;
+  }
+
+  async deleteDcaBotOrders(botId: number): Promise<void> {
+    await db.delete(dcaBotOrders).where(eq(dcaBotOrders.botId, botId));
+  }
+
+  async getActiveDcaBots(): Promise<AutopilotBot[]> {
+    return await db.select().from(autopilotBots)
+      .where(and(eq(autopilotBots.isActive, true), eq(autopilotBots.strategy, "dca_spot")));
   }
 }
 

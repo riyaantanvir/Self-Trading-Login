@@ -24,7 +24,15 @@ The platform is built with a React, Vite, TypeScript, TailwindCSS, and shadcn/ui
     -   **Smart Signal Alerts:** Background scanner for buy/sell signals near S/R zones, with Telegram alerts and cooldowns.
     -   **Notification System:** Bell icon in the header with unread badges, showing notifications for trades, transfers, and futures actions.
     -   **Binance Pay-style Transfers:** Search users, transfer funds, and view transfer history.
-    -   **Autopilot:** Create and manage trading bots with custom rules. Bot CRUD, toggle on/off, strategy config placeholder for user-provided calculation logic. DB autopilot_bots table, /autopilot route.
+    -   **Autopilot & DCA Spot Bot:** Create and manage trading bots. DCA Spot Bot supports configurable dollar-cost averaging with:
+        - Coin selection with real-time support/resistance zone analysis
+        - Configurable buy steps (5 default: 20%, 20%, 25%, 20%, 15% at 0%, 4%, 8%, 12%, 18% drops)
+        - Configurable sell steps (3 default: 30% at +4%, 40% at +8%, remaining at +12%)
+        - Market or limit order execution
+        - Auto-execution engine (10s interval) for active bots
+        - Risk control: support break protection stops buys, allows selling on bounce
+        - Full dashboard with PnL tracking, order history, and live calculations
+        - DB tables: autopilot_bots, dca_bot_orders. Routes: /autopilot, /api/dca/*
 -   **Admin Panel:** Provides user management, balance top-up for users, and API key management (masked display).
 -   **UI/UX:** Binance-style interface with professional TradingView chart styling (dark background #131722, muted grids).
 

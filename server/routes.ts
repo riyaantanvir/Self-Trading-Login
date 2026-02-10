@@ -366,6 +366,129 @@ async function setupBinanceLiveStream(httpServer: Server) {
     }
   }, 3000);
 
+  setInterval(async () => {
+    if (tickerMap.size === 0) return;
+    try {
+      const activeDcaBots = await storage.getActiveDcaBots();
+      for (const bot of activeDcaBots) {
+        const ticker = tickerMap.get(bot.symbol);
+        if (!ticker) continue;
+        const currentPrice = parseFloat(ticker.lastPrice);
+        if (!currentPrice || currentPrice <= 0) continue;
+
+        let config: any = {};
+        try { config = JSON.parse(bot.strategyConfig || "{}"); } catch { continue; }
+        if (config.strategy !== "dca_spot") continue;
+
+        const orders = await storage.getDcaBotOrders(bot.id);
+        const executedBuys = orders.filter((o: any) => o.type === "buy");
+        const executedSells = orders.filter((o: any) => o.type === "sell");
+
+        const supportBroken = config.riskControl?.supportBreakStop && config.supportPrice > 0 && currentPrice < config.supportPrice;
+
+        const totalCapital = config.totalCapital || bot.tradeAmount;
+        const buySteps = config.buySteps || [];
+        const sellSteps = config.sellSteps || [];
+        const maxBuySteps = config.maxBuySteps || 5;
+
+        if (!supportBroken && executedBuys.length < maxBuySteps) {
+          const entryPrice = config.orderType === "limit" && config.limitPrice ? config.limitPrice : (executedBuys.length > 0 ? executedBuys[0].price : currentPrice);
+
+          for (const step of buySteps) {
+            if (executedBuys.find((o: any) => o.step === step.step)) continue;
+
+            let triggerPrice: number;
+            if (step.step === 1) {
+              triggerPrice = entryPrice;
+              if (config.orderType === "limit" && config.limitPrice && currentPrice > config.limitPrice) continue;
+            } else {
+              triggerPrice = entryPrice * (1 - step.dropPercent / 100);
+              if (currentPrice > triggerPrice) continue;
+            }
+
+            const capitalForStep = totalCapital * (step.percent / 100);
+            const quantity = capitalForStep / currentPrice;
+            const total = quantity * currentPrice;
+
+            const user = await storage.getUser(bot.userId);
+            if (!user || user.balance < total) continue;
+
+            await storage.updateUserBalance(bot.userId, user.balance - total);
+
+            const existing = await storage.getPortfolioItem(bot.userId, bot.symbol);
+            if (existing) {
+              const newQty = existing.quantity + quantity;
+              const newAvg = ((existing.avgBuyPrice * existing.quantity) + total) / newQty;
+              await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, newAvg);
+            } else {
+              await storage.upsertPortfolioItem(bot.userId, bot.symbol, quantity, currentPrice);
+            }
+
+            await storage.createDcaBotOrder({
+              botId: bot.id, userId: bot.userId, step: step.step,
+              type: "buy", price: currentPrice, quantity, total,
+            });
+            await storage.incrementBotTrades(bot.id, 0);
+            console.log(`[DCA Bot ${bot.id}] Auto buy step ${step.step} at $${currentPrice} qty ${quantity.toFixed(6)}`);
+            break;
+          }
+        }
+
+        if (executedBuys.length > 0) {
+          const totalCost = executedBuys.reduce((s: number, o: any) => s + o.total, 0);
+          const totalBuyQty = executedBuys.reduce((s: number, o: any) => s + o.quantity, 0);
+          const totalSoldQty = executedSells.reduce((s: number, o: any) => s + o.quantity, 0);
+          const avgPrice = totalBuyQty > 0 ? totalCost / totalBuyQty : 0;
+          const remainingQty = totalBuyQty - totalSoldQty;
+
+          if (remainingQty > 0.00000001 && avgPrice > 0) {
+            for (const step of sellSteps) {
+              if (executedSells.find((o: any) => o.step === step.step)) continue;
+
+              const triggerPrice = avgPrice * (1 + step.risePercent / 100);
+              if (currentPrice < triggerPrice) continue;
+
+              let sellQty: number;
+              if (step.sellRemaining) {
+                sellQty = remainingQty;
+              } else {
+                sellQty = totalBuyQty * (step.percent / 100);
+                if (sellQty > remainingQty) sellQty = remainingQty;
+              }
+              if (sellQty <= 0.00000001) continue;
+
+              const total = sellQty * currentPrice;
+              const user = await storage.getUser(bot.userId);
+              if (!user) continue;
+
+              const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
+              if (!portfolioItem || portfolioItem.quantity < sellQty) continue;
+
+              await storage.updateUserBalance(bot.userId, user.balance + total);
+              const newQty = portfolioItem.quantity - sellQty;
+              if (newQty <= 0.00000001) {
+                await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
+              } else {
+                await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
+              }
+
+              const pnl = sellQty * (currentPrice - avgPrice);
+              await storage.createDcaBotOrder({
+                botId: bot.id, userId: bot.userId, step: step.step,
+                type: "sell", price: currentPrice, quantity: sellQty, total,
+              });
+              await storage.incrementBotTrades(bot.id, pnl);
+              console.log(`[DCA Bot ${bot.id}] Auto sell step ${step.step} at $${currentPrice} qty ${sellQty.toFixed(6)} pnl $${pnl.toFixed(2)}`);
+              break;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("[DCA Bot Engine] Error:", err);
+    }
+  }, 10000);
+
   let lastSeenNewsIds = new Set<string>();
   let newsAlertInitialized = false;
 
@@ -3245,10 +3368,280 @@ export async function registerRoutes(
   app.delete("/api/autopilot/bots/:id", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     try {
+      await storage.deleteDcaBotOrders(Number(req.params.id));
       await storage.deleteAutopilotBot((req.user as any).id, Number(req.params.id));
       res.json({ success: true });
     } catch {
       res.status(500).json({ message: "Failed to delete bot" });
+    }
+  });
+
+  app.get("/api/dca/support-zones/:symbol", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const symbol = req.params.symbol.toUpperCase();
+      const sr = await computeSupportResistance(symbol);
+      if (!sr) return res.json({ supports: [], resistances: [], currentPrice: 0 });
+
+      const ticker = tickerMap.get(symbol);
+      const currentPrice = ticker ? parseFloat(ticker.lastPrice) : sr.currentPrice;
+
+      const klineUrl = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=1d&limit=30`;
+      let dailyData: { close: number; low: number; high: number; volume: number }[] = [];
+      try {
+        const kRes = await fetch(klineUrl);
+        if (kRes.ok) {
+          const raw = await kRes.json();
+          dailyData = (raw as any[]).map((k: any) => ({
+            high: parseFloat(k[2]),
+            low: parseFloat(k[3]),
+            close: parseFloat(k[4]),
+            volume: parseFloat(k[5]),
+          }));
+        }
+      } catch {}
+
+      let rsi = 50;
+      if (dailyData.length >= 15) {
+        const closes = dailyData.map(d => d.close);
+        rsi = computeRSI(closes, 14);
+      }
+
+      res.json({
+        supports: sr.supports.map(s => ({ price: s.price, touches: s.touches })),
+        resistances: sr.resistances.map(r => ({ price: r.price, touches: r.touches })),
+        currentPrice,
+        rsi: +rsi.toFixed(2),
+        dailyData,
+      });
+    } catch {
+      res.status(500).json({ message: "Failed to fetch support zones" });
+    }
+  });
+
+  app.get("/api/dca/bots/:id/orders", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const bot = await storage.getAutopilotBot((req.user as any).id, Number(req.params.id));
+      if (!bot) return res.status(404).json({ message: "Bot not found" });
+      const orders = await storage.getDcaBotOrders(bot.id);
+      res.json(orders);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch orders" });
+    }
+  });
+
+  app.post("/api/dca/bots/:id/execute-buy", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const bodySchema = z.object({
+        step: z.number().int().min(1),
+        price: z.number().positive().optional(),
+        orderType: z.enum(["market", "limit"]).default("market"),
+      });
+      const parsed = bodySchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid request: step (number) is required" });
+
+      const userId = (req.user as any).id;
+      const botId = Number(req.params.id);
+      const bot = await storage.getAutopilotBot(userId, botId);
+      if (!bot) return res.status(404).json({ message: "Bot not found" });
+
+      let config: any = {};
+      try { config = JSON.parse(bot.strategyConfig || "{}"); } catch {}
+      if (config.strategy !== "dca_spot") return res.status(400).json({ message: "Not a DCA bot" });
+
+      const { step, price: requestedPrice, orderType } = parsed.data;
+      const buySteps = config.buySteps || [];
+      const stepConfig = buySteps.find((s: any) => s.step === step);
+      if (!stepConfig) return res.status(400).json({ message: "Invalid step" });
+
+      const existingOrders = await storage.getDcaBotOrders(botId);
+      const executedBuys = existingOrders.filter(o => o.type === "buy");
+      if (executedBuys.find(o => o.step === step)) {
+        return res.status(400).json({ message: "This buy step already executed" });
+      }
+      if (executedBuys.length >= (config.maxBuySteps || 5)) {
+        return res.status(400).json({ message: "Maximum buy steps reached" });
+      }
+
+      const ticker = tickerMap.get(bot.symbol);
+      const currentPrice = ticker ? parseFloat(ticker.lastPrice) : requestedPrice;
+      const execPrice = orderType === "limit" ? requestedPrice : currentPrice;
+      if (!execPrice || execPrice <= 0) return res.status(400).json({ message: "Invalid price" });
+
+      const totalCapital = config.totalCapital || bot.tradeAmount;
+      const capitalForStep = totalCapital * (stepConfig.percent / 100);
+      const quantity = capitalForStep / execPrice;
+      const total = quantity * execPrice;
+
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(400).json({ message: "User not found" });
+      if (user.balance < total) return res.status(400).json({ message: "Insufficient balance" });
+
+      await storage.updateUserBalance(userId, user.balance - total);
+
+      const existing = await storage.getPortfolioItem(userId, bot.symbol);
+      if (existing) {
+        const newQty = existing.quantity + quantity;
+        const newAvg = ((existing.avgBuyPrice * existing.quantity) + total) / newQty;
+        await storage.upsertPortfolioItem(userId, bot.symbol, newQty, newAvg);
+      } else {
+        await storage.upsertPortfolioItem(userId, bot.symbol, quantity, execPrice);
+      }
+
+      await storage.createTrade({
+        symbol: bot.symbol,
+        type: "buy",
+        quantity,
+        price: execPrice,
+        status: "completed",
+        orderType: orderType || "market",
+        userId,
+        total,
+      } as any);
+
+      const order = await storage.createDcaBotOrder({
+        botId,
+        userId,
+        step,
+        type: "buy",
+        price: execPrice,
+        quantity,
+        total,
+      });
+
+      await storage.incrementBotTrades(botId, 0);
+
+      const allOrders = await storage.getDcaBotOrders(botId);
+      const allBuys = allOrders.filter(o => o.type === "buy");
+      const totalCost = allBuys.reduce((s, o) => s + o.total, 0);
+      const totalQty = allBuys.reduce((s, o) => s + o.quantity, 0);
+      const avgPrice = totalQty > 0 ? totalCost / totalQty : 0;
+
+      res.json({
+        order,
+        avgPrice,
+        totalCost,
+        totalQuantity: totalQty,
+        executedSteps: allBuys.length,
+      });
+    } catch (err) {
+      console.error("[DCA Execute Buy]", err);
+      res.status(500).json({ message: "Failed to execute buy" });
+    }
+  });
+
+  app.post("/api/dca/bots/:id/execute-sell", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const sellBodySchema = z.object({
+        step: z.number().int().min(1),
+        price: z.number().positive().optional(),
+        orderType: z.enum(["market", "limit"]).default("market"),
+      });
+      const parsedSell = sellBodySchema.safeParse(req.body);
+      if (!parsedSell.success) return res.status(400).json({ message: "Invalid request: step (number) is required" });
+
+      const userId = (req.user as any).id;
+      const botId = Number(req.params.id);
+      const bot = await storage.getAutopilotBot(userId, botId);
+      if (!bot) return res.status(404).json({ message: "Bot not found" });
+
+      let config: any = {};
+      try { config = JSON.parse(bot.strategyConfig || "{}"); } catch {}
+      if (config.strategy !== "dca_spot") return res.status(400).json({ message: "Not a DCA bot" });
+
+      const { step, price: requestedPrice, orderType } = parsedSell.data;
+      const sellSteps = config.sellSteps || [];
+      const stepConfig = sellSteps.find((s: any) => s.step === step);
+      if (!stepConfig) return res.status(400).json({ message: "Invalid sell step" });
+
+      const existingOrders = await storage.getDcaBotOrders(botId);
+      const executedSells = existingOrders.filter(o => o.type === "sell");
+      if (executedSells.find(o => o.step === step)) {
+        return res.status(400).json({ message: "This sell step already executed" });
+      }
+
+      const allBuys = existingOrders.filter(o => o.type === "buy");
+      if (allBuys.length === 0) return res.status(400).json({ message: "No buys yet" });
+
+      const totalBought = allBuys.reduce((s, o) => s + o.quantity, 0);
+      const totalSold = executedSells.reduce((s, o) => s + o.quantity, 0);
+      const remainingQty = totalBought - totalSold;
+      if (remainingQty <= 0) return res.status(400).json({ message: "No position to sell" });
+
+      const ticker = tickerMap.get(bot.symbol);
+      const currentPrice = ticker ? parseFloat(ticker.lastPrice) : requestedPrice;
+      const execPrice = orderType === "limit" ? requestedPrice : currentPrice;
+      if (!execPrice || execPrice <= 0) return res.status(400).json({ message: "Invalid price" });
+
+      let sellQty: number;
+      if (stepConfig.sellRemaining) {
+        sellQty = remainingQty;
+      } else {
+        sellQty = totalBought * (stepConfig.percent / 100);
+        if (sellQty > remainingQty) sellQty = remainingQty;
+      }
+
+      const total = sellQty * execPrice;
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(400).json({ message: "User not found" });
+
+      const portfolioItem = await storage.getPortfolioItem(userId, bot.symbol);
+      if (!portfolioItem || portfolioItem.quantity < sellQty) {
+        return res.status(400).json({ message: "Insufficient holdings" });
+      }
+
+      await storage.updateUserBalance(userId, user.balance + total);
+      const newQty = portfolioItem.quantity - sellQty;
+      if (newQty <= 0.00000001) {
+        await storage.upsertPortfolioItem(userId, bot.symbol, 0, 0);
+      } else {
+        await storage.upsertPortfolioItem(userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
+      }
+
+      const totalCost = allBuys.reduce((s, o) => s + o.total, 0);
+      const totalBoughtQty = allBuys.reduce((s, o) => s + o.quantity, 0);
+      const avgBuyPrice = totalBoughtQty > 0 ? totalCost / totalBoughtQty : 0;
+      const pnl = sellQty * (execPrice - avgBuyPrice);
+
+      const order = await storage.createDcaBotOrder({
+        botId,
+        userId,
+        step,
+        type: "sell",
+        price: execPrice,
+        quantity: sellQty,
+        total,
+      });
+
+      await storage.incrementBotTrades(botId, pnl);
+
+      res.json({
+        order,
+        pnl,
+        soldQuantity: sellQty,
+        remainingQuantity: remainingQty - sellQty,
+      });
+    } catch (err) {
+      console.error("[DCA Execute Sell]", err);
+      res.status(500).json({ message: "Failed to execute sell" });
+    }
+  });
+
+  app.post("/api/dca/bots/:id/reset", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const userId = (req.user as any).id;
+      const botId = Number(req.params.id);
+      const bot = await storage.getAutopilotBot(userId, botId);
+      if (!bot) return res.status(404).json({ message: "Bot not found" });
+      await storage.deleteDcaBotOrders(botId);
+      await storage.updateAutopilotBot(userId, botId, { totalTrades: 0, totalPnl: 0 } as any);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to reset bot" });
     }
   });
 
