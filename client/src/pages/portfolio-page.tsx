@@ -170,10 +170,10 @@ export default function PortfolioPage() {
                 <tr className="border-b border-border bg-muted/30">
                   <th className="text-left p-3 text-xs text-muted-foreground font-medium">Asset</th>
                   <th className="text-right p-3 text-xs text-muted-foreground font-medium">Quantity</th>
-                  {!isRealMode && <th className="text-right p-3 text-xs text-muted-foreground font-medium">Avg. Buy</th>}
+                  <th className="text-right p-3 text-xs text-muted-foreground font-medium">Avg. Buy</th>
                   <th className="text-right p-3 text-xs text-muted-foreground font-medium">Current</th>
                   <th className="text-right p-3 text-xs text-muted-foreground font-medium">Value</th>
-                  {!isRealMode && <th className="text-right p-3 text-xs text-muted-foreground font-medium">P&L</th>}
+                  <th className="text-right p-3 text-xs text-muted-foreground font-medium">P&L</th>
                   <th className="text-center p-3 text-xs text-muted-foreground font-medium">Action</th>
                 </tr>
               </thead>
@@ -188,21 +188,29 @@ export default function PortfolioPage() {
                           <span className="text-xs text-muted-foreground">/{isRealMode ? "USD" : "USDT"}</span>
                         </td>
                         <td className="p-3 text-right font-mono text-foreground">{item.quantity.toFixed(6)}</td>
-                        {!isRealMode && <td className="p-3 text-right font-mono text-muted-foreground">${item.avgBuyPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>}
+                        <td className="p-3 text-right font-mono text-muted-foreground">
+                          {item.avgBuyPrice > 0 
+                            ? `$${item.avgBuyPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}` 
+                            : "--"}
+                        </td>
                         <td className="p-3 text-right font-mono text-foreground">${item.currentPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</td>
                         <td className="p-3 text-right font-mono font-semibold text-foreground">${item.currentValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                        {!isRealMode && (
                         <td className="p-3 text-right">
-                          <div className={`font-mono font-medium ${item.pnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
-                            {item.pnl >= 0 ? "+" : ""}${item.pnl.toFixed(2)}
-                          </div>
-                          <div className={`text-xs ${item.pnlPercent >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
-                            {item.pnlPercent >= 0 ? "+" : ""}{item.pnlPercent.toFixed(2)}%
-                          </div>
+                          {item.avgBuyPrice > 0 ? (
+                            <>
+                              <div className={`font-mono font-medium ${item.pnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+                                {item.pnl >= 0 ? "+" : ""}${item.pnl.toFixed(2)}
+                              </div>
+                              <div className={`text-xs ${item.pnlPercent >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+                                {item.pnlPercent >= 0 ? "+" : ""}{item.pnlPercent.toFixed(2)}%
+                              </div>
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">--</span>
+                          )}
                         </td>
-                        )}
                         <td className="p-3 text-center">
-                          {item.quantity > 0 && !isRealMode ? (
+                          {item.quantity > 0 ? (
                             <Button
                               size="sm"
                               variant="destructive"
@@ -283,7 +291,7 @@ export default function PortfolioPage() {
                     </>
                     )}
                   </div>
-                  {item.quantity > 0 && !isRealMode && (
+                  {item.quantity > 0 && (
                     <Button
                       size="sm"
                       variant="destructive"
