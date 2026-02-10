@@ -934,6 +934,32 @@ function BotCard({ bot, onSelect }: { bot: AutopilotBot; onSelect: (bot: Autopil
   try { config = JSON.parse(bot.strategyConfig || "{}"); } catch {}
   const isDca = config.strategy === "dca_spot";
 
+  const { data: priceData } = useQuery<{ price: number }>({
+    queryKey: [`/api/dca/price/${bot.symbol}`],
+    refetchInterval: 3000,
+    enabled: bot.isActive,
+  });
+
+  const { data: orders = [] } = useQuery<any[]>({
+    queryKey: [`/api/dca/bots/${bot.id}/orders`],
+    refetchInterval: 5000,
+    enabled: bot.isActive,
+  });
+
+  const currentPrice = priceData?.price || 0;
+  const buyOrders = orders.filter((o: any) => o.type === "buy" && o.status === "executed");
+  const sellOrders = orders.filter((o: any) => o.type === "sell" && o.status === "executed");
+  const totalBoughtQty = buyOrders.reduce((s: number, o: any) => s + o.quantity, 0);
+  const totalSoldQty = sellOrders.reduce((s: number, o: any) => s + o.quantity, 0);
+  const totalBoughtCost = buyOrders.reduce((s: number, o: any) => s + o.total, 0);
+  const totalSoldRevenue = sellOrders.reduce((s: number, o: any) => s + o.total, 0);
+  const holdingQty = totalBoughtQty - totalSoldQty;
+  const holdingValue = holdingQty * currentPrice;
+  const avgCost = totalBoughtQty > 0 ? totalBoughtCost / totalBoughtQty : 0;
+  const realizedPnl = totalSoldRevenue - (avgCost * totalSoldQty);
+  const unrealizedPnl = holdingQty > 0 ? holdingValue - (avgCost * holdingQty) : 0;
+  const runningPnl = realizedPnl + unrealizedPnl;
+
   const toggleMutation = useMutation({
     mutationFn: async (isActive: boolean) => {
       await apiRequest("POST", `/api/autopilot/bots/${bot.id}/toggle`, { isActive });
@@ -963,7 +989,11 @@ function BotCard({ bot, onSelect }: { bot: AutopilotBot; onSelect: (bot: Autopil
     },
   });
 
-  const pnlColor = bot.totalPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]";
+  const displayPnl = bot.isActive && currentPrice > 0 ? runningPnl : bot.totalPnl;
+  const pnlColor = displayPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]";
+  const pnlPercent = totalBoughtCost > 0 && currentPrice > 0
+    ? ((runningPnl / totalBoughtCost) * 100)
+    : 0;
 
   return (
     <Card className="p-4 hover-elevate cursor-pointer" onClick={() => onSelect(bot)} data-testid={`card-bot-${bot.id}`}>
@@ -999,13 +1029,25 @@ function BotCard({ bot, onSelect }: { bot: AutopilotBot; onSelect: (bot: Autopil
       <div className="grid grid-cols-3 gap-3 mt-4 pt-3 border-t border-border">
         <div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Trades</div>
-          <div className="text-sm font-mono font-semibold" data-testid={`text-bot-trades-${bot.id}`}>{bot.totalTrades}</div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-mono font-semibold" data-testid={`text-bot-trades-${bot.id}`}>{bot.totalTrades}</span>
+            {bot.isActive && currentPrice > 0 && holdingQty > 0 && (
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${unrealizedPnl >= 0 ? "bg-[#0ecb81]/15 text-[#0ecb81]" : "bg-[#f6465d]/15 text-[#f6465d]"}`} data-testid={`text-bot-live-pnl-${bot.id}`}>
+                {unrealizedPnl >= 0 ? "+" : ""}{unrealizedPnl.toFixed(2)}
+              </span>
+            )}
+          </div>
         </div>
         <div>
-          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Total PNL</div>
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Running PNL</div>
           <div className={`text-sm font-mono font-semibold ${pnlColor}`} data-testid={`text-bot-pnl-${bot.id}`}>
-            {bot.totalPnl >= 0 ? "+" : ""}{bot.totalPnl.toFixed(2)} USDT
+            {displayPnl >= 0 ? "+" : ""}{displayPnl.toFixed(2)} USDT
           </div>
+          {bot.isActive && currentPrice > 0 && totalBoughtCost > 0 && (
+            <div className={`text-[10px] font-mono ${pnlPercent >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}>
+              {pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(2)}%
+            </div>
+          )}
         </div>
         <div>
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Strategy</div>
