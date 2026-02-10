@@ -102,8 +102,10 @@ export async function getKrakenUsdtBalance(
   }
   let total = 0;
   const usdtBalance = result.balances["USDT"] || result.balances["usdt"];
-  const usdBalance = result.balances["ZUSD"] || result.balances["USD"] || result.balances["zusd"];
+  const usdcBalance = result.balances["USDC"] || result.balances["usdc"];
+  const usdBalance = result.balances["ZUSD"] || result.balances["USD"] || result.balances["zusd"] || result.balances["usd"];
   if (usdtBalance) total += parseFloat(usdtBalance);
+  if (usdcBalance) total += parseFloat(usdcBalance);
   if (usdBalance) total += parseFloat(usdBalance);
   return { success: true, balance: total };
 }
