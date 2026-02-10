@@ -1,28 +1,29 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Bell, ArrowUpRight, ArrowDownLeft, TrendingUp, TrendingDown, CheckCheck } from "lucide-react";
+import { Bell, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownLeft, CheckCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { Notification } from "@shared/schema";
 
 function getNotifIcon(type: string) {
   switch (type) {
     case "trade_buy":
-      return <TrendingUp className="w-4 h-4 text-[#0ecb81] flex-shrink-0" />;
+      return <div className="w-8 h-8 rounded-full bg-[#0ecb81]/15 flex items-center justify-center flex-shrink-0"><TrendingUp className="w-4 h-4 text-[#0ecb81]" /></div>;
     case "trade_sell":
-      return <TrendingDown className="w-4 h-4 text-[#f6465d] flex-shrink-0" />;
+      return <div className="w-8 h-8 rounded-full bg-[#f6465d]/15 flex items-center justify-center flex-shrink-0"><TrendingDown className="w-4 h-4 text-[#f6465d]" /></div>;
     case "transfer_sent":
-      return <ArrowUpRight className="w-4 h-4 text-[#f6465d] flex-shrink-0" />;
+      return <div className="w-8 h-8 rounded-full bg-[#f6465d]/15 flex items-center justify-center flex-shrink-0"><ArrowUpRight className="w-4 h-4 text-[#f6465d]" /></div>;
     case "transfer_received":
-      return <ArrowDownLeft className="w-4 h-4 text-[#0ecb81] flex-shrink-0" />;
+      return <div className="w-8 h-8 rounded-full bg-[#0ecb81]/15 flex items-center justify-center flex-shrink-0"><ArrowDownLeft className="w-4 h-4 text-[#0ecb81]" /></div>;
     case "futures_open":
-      return <TrendingUp className="w-4 h-4 text-[#f0b90b] flex-shrink-0" />;
+      return <div className="w-8 h-8 rounded-full bg-[#f0b90b]/15 flex items-center justify-center flex-shrink-0"><TrendingUp className="w-4 h-4 text-[#f0b90b]" /></div>;
     case "futures_profit":
-      return <TrendingUp className="w-4 h-4 text-[#0ecb81] flex-shrink-0" />;
+      return <div className="w-8 h-8 rounded-full bg-[#0ecb81]/15 flex items-center justify-center flex-shrink-0"><TrendingUp className="w-4 h-4 text-[#0ecb81]" /></div>;
     case "futures_loss":
-      return <TrendingDown className="w-4 h-4 text-[#f6465d] flex-shrink-0" />;
+      return <div className="w-8 h-8 rounded-full bg-[#f6465d]/15 flex items-center justify-center flex-shrink-0"><TrendingDown className="w-4 h-4 text-[#f6465d]" /></div>;
     default:
-      return <Bell className="w-4 h-4 text-muted-foreground flex-shrink-0" />;
+      return <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0"><Bell className="w-4 h-4 text-muted-foreground" /></div>;
   }
 }
 
@@ -31,12 +32,12 @@ function timeAgo(date: Date | string) {
   const d = new Date(date);
   const diffMs = now.getTime() - d.getTime();
   const diffMins = Math.floor(diffMs / 60000);
-  if (diffMins < 1) return "now";
-  if (diffMins < 60) return `${diffMins}m`;
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
   const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h`;
+  if (diffHours < 24) return `${diffHours}h ago`;
   const diffDays = Math.floor(diffHours / 24);
-  return `${diffDays}d`;
+  return `${diffDays}d ago`;
 }
 
 export function NotificationBell() {
@@ -109,59 +110,117 @@ export function NotificationBell() {
       </Button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 max-h-[70vh] bg-card border border-border rounded-md shadow-lg z-[10000] flex flex-col overflow-hidden">
-          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border">
-            <span className="text-sm font-semibold text-foreground">Notifications</span>
-            {unreadCount > 0 && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => markAllRead.mutate()}
-                className="gap-1 text-xs text-muted-foreground"
-                data-testid="button-mark-all-read"
-              >
-                <CheckCheck className="w-3.5 h-3.5" />
-                Mark all read
-              </Button>
-            )}
+        <>
+          <div className="hidden sm:block absolute right-0 top-full mt-2 w-80 max-h-[60vh] bg-popover border border-border rounded-md shadow-lg z-[10000] flex-col overflow-hidden" style={{ display: undefined }}>
+            <div className="flex items-center justify-between gap-2 px-3 py-2.5 border-b border-border">
+              <span className="text-sm font-semibold">Notifications</span>
+              <div className="flex items-center gap-1">
+                {unreadCount > 0 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => markAllRead.mutate()}
+                    className="gap-1 text-xs text-muted-foreground"
+                    data-testid="button-mark-all-read"
+                  >
+                    <CheckCheck className="w-3.5 h-3.5" />
+                    Read all
+                  </Button>
+                )}
+                <Button size="icon" variant="ghost" onClick={() => setOpen(false)} data-testid="button-close-notifications">
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+            <div className="overflow-y-auto flex-1">
+              {sorted.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+                  <Bell className="w-7 h-7 mb-2 opacity-40" />
+                  <span className="text-xs">No notifications</span>
+                </div>
+              ) : (
+                sorted.map((n) => (
+                  <div
+                    key={n.id}
+                    className={`flex items-start gap-3 px-3 py-2.5 border-b border-border/40 cursor-pointer transition-colors ${
+                      !n.isRead ? "bg-muted/40" : ""
+                    } hover-elevate`}
+                    onClick={() => { if (!n.isRead) markRead.mutate(n.id); }}
+                    data-testid={`notification-item-${n.id}`}
+                  >
+                    {getNotifIcon(n.type)}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-semibold truncate">{n.title}</span>
+                        {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-[#0ecb81] flex-shrink-0" />}
+                      </div>
+                      <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug line-clamp-2">{n.message}</p>
+                      <span className="text-[10px] text-muted-foreground/50 mt-0.5 block">{n.createdAt ? timeAgo(n.createdAt) : ""}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
 
-          <div className="overflow-y-auto flex-1">
-            {sorted.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <Bell className="w-8 h-8 mb-2 opacity-50" />
-                <span className="text-sm">No notifications yet</span>
-              </div>
-            ) : (
-              sorted.map((n) => (
-                <div
-                  key={n.id}
-                  className={`flex items-start gap-3 px-4 py-3 border-b border-border/50 cursor-pointer transition-colors ${
-                    !n.isRead ? "bg-muted/30" : ""
-                  } hover-elevate`}
-                  onClick={() => {
-                    if (!n.isRead) markRead.mutate(n.id);
-                  }}
-                  data-testid={`notification-item-${n.id}`}
-                >
-                  <div className="mt-0.5">{getNotifIcon(n.type)}</div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-semibold text-foreground">{n.title}</span>
-                      {!n.isRead && (
-                        <span className="w-2 h-2 rounded-full bg-[#0ecb81] flex-shrink-0" />
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{n.message}</p>
-                    <span className="text-[10px] text-muted-foreground/60 mt-1 block">
-                      {n.createdAt ? timeAgo(n.createdAt) : ""}
-                    </span>
-                  </div>
+          <div className="sm:hidden fixed inset-0 z-[10000] bg-background/80 backdrop-blur-sm" onClick={() => setOpen(false)}>
+            <div
+              className="absolute bottom-0 left-0 right-0 bg-card border-t border-border rounded-t-xl max-h-[70vh] flex flex-col overflow-hidden animate-in slide-in-from-bottom-5 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border">
+                <span className="text-sm font-semibold">Notifications</span>
+                <div className="flex items-center gap-1">
+                  {unreadCount > 0 && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => markAllRead.mutate()}
+                      className="gap-1 text-xs text-muted-foreground"
+                      data-testid="button-mark-all-read-mobile"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                      Read all
+                    </Button>
+                  )}
+                  <Button size="icon" variant="ghost" onClick={() => setOpen(false)} data-testid="button-close-notifications-mobile">
+                    <X className="w-4 h-4" />
+                  </Button>
                 </div>
-              ))
-            )}
+              </div>
+              <div className="w-10 h-1 bg-muted-foreground/20 rounded-full mx-auto mt-1 mb-1" />
+              <div className="overflow-y-auto flex-1 pb-safe">
+                {sorted.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                    <Bell className="w-8 h-8 mb-2 opacity-40" />
+                    <span className="text-sm">No notifications</span>
+                  </div>
+                ) : (
+                  sorted.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`flex items-start gap-3 px-4 py-3 border-b border-border/30 cursor-pointer transition-colors ${
+                        !n.isRead ? "bg-muted/30" : ""
+                      } hover-elevate`}
+                      onClick={() => { if (!n.isRead) markRead.mutate(n.id); }}
+                      data-testid={`notification-item-mobile-${n.id}`}
+                    >
+                      {getNotifIcon(n.type)}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-semibold truncate">{n.title}</span>
+                          {!n.isRead && <span className="w-2 h-2 rounded-full bg-[#0ecb81] flex-shrink-0" />}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{n.message}</p>
+                        <span className="text-[10px] text-muted-foreground/50 mt-1 block">{n.createdAt ? timeAgo(n.createdAt) : ""}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
