@@ -65,11 +65,24 @@ const SYMBOL_MAP: Record<string, string> = {
   BTC: "XBT",
 };
 
-function toKrakenSymbol(symbol: string): string {
-  const base = symbol.replace(/USDT$/, "").replace(/USD$/, "");
-  const quote = symbol.endsWith("USDT") ? "USDT" : "USD";
+function toKrakenSymbol(symbol: string, overrideQuote?: string): string {
+  const base = symbol.replace(/USDT$/, "").replace(/USDC$/, "").replace(/USD$/, "");
+  const quote = overrideQuote || (symbol.endsWith("USDT") ? "USDT" : symbol.endsWith("USDC") ? "USDC" : "USD");
   const krakenBase = SYMBOL_MAP[base] || base;
   return `${krakenBase}${quote}`;
+}
+
+async function detectQuoteCurrency(creds: KrakenCredentials): Promise<string> {
+  const result = await getKrakenBalance(creds);
+  if (!result.success || !result.balances) return "USDT";
+
+  const usdtBal = parseFloat(result.balances["USDT"] || "0");
+  const usdcBal = parseFloat(result.balances["USDC"] || "0");
+  const usdBal = parseFloat(result.balances["ZUSD"] || result.balances["USD"] || "0");
+
+  if (usdcBal >= usdtBal && usdcBal >= usdBal) return "USDC";
+  if (usdBal >= usdtBal && usdBal >= usdcBal) return "USD";
+  return "USDT";
 }
 
 function fromKrakenAsset(asset: string): string {
@@ -138,7 +151,10 @@ export async function placeKrakenOrder(
     price?: string;
   }
 ): Promise<{ success: boolean; data?: { txid: string[]; description: string }; error?: string }> {
-  const pair = toKrakenSymbol(options.symbol);
+  const quoteCurrency = await detectQuoteCurrency(creds);
+  const pair = toKrakenSymbol(options.symbol, quoteCurrency);
+  console.log(`[Kraken] Detected quote currency: ${quoteCurrency}, using pair: ${pair}`);
+
   const params: Record<string, string> = {
     pair,
     type: options.side.toLowerCase(),
