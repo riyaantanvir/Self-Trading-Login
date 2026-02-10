@@ -30,6 +30,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { QuickAnalysisSheet } from "@/components/quick-analysis";
 
 interface KlineData {
   time: number;
@@ -1063,6 +1064,7 @@ export default function TokenDetail() {
   const [indicatorCondition, setIndicatorCondition] = useState("bb_lower");
   const [indicatorInterval, setIndicatorInterval] = useState("1h");
   const [alertTelegram, setAlertTelegram] = useState(true);
+  const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
   const createAlert = useCreateAlert();
 
   if (!ticker) {
@@ -1110,6 +1112,14 @@ export default function TokenDetail() {
             </span>
 
             <div className="ml-auto flex items-center gap-1 sm:gap-2 flex-shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsAnalysisOpen(true)}
+                data-testid="button-quick-analysis"
+              >
+                <BarChart3 className="w-4 h-4 text-[#f0b90b]" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
@@ -1490,6 +1500,8 @@ export default function TokenDetail() {
           <TickerBar />
         </div>
       </div>
+
+      <QuickAnalysisSheet symbol={symbol} open={isAnalysisOpen} onOpenChange={setIsAnalysisOpen} />
     </LayoutShell>
   );
 }

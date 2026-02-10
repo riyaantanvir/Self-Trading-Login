@@ -2258,5 +2258,253 @@ export async function registerRoutes(
     }
   });
 
+  const coinAnalysisCache: { [key: string]: { data: any; timestamp: number } } = {};
+  app.get("/api/market/coin-analysis/:symbol", async (req, res) => {
+    try {
+      const symbol = req.params.symbol.toUpperCase();
+      const now = Date.now();
+      if (coinAnalysisCache[symbol] && now - coinAnalysisCache[symbol].timestamp < 30000) {
+        return res.json(coinAnalysisCache[symbol].data);
+      }
+
+      const ticker = tickerMap.get(symbol);
+      const currentPrice = ticker ? parseFloat(ticker.lastPrice) : 0;
+      const priceChange24h = ticker ? parseFloat(ticker.priceChangePercent) : 0;
+      const volume24h = ticker ? parseFloat(ticker.quoteVolume) : 0;
+
+      if (!currentPrice) {
+        return res.status(404).json({ message: "Symbol not found or no live data" });
+      }
+
+      const [klinesRes, depthRes, fngRes] = await Promise.all([
+        fetch(`https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=1h&limit=200`).then(r => r.ok ? r.json() : []),
+        fetch(`https://data-api.binance.vision/api/v3/depth?symbol=${symbol}&limit=50`).then(r => r.ok ? r.json() : { bids: [], asks: [] }),
+        fetch("https://api.alternative.me/fng/?limit=1&date_format=world").then(r => r.ok ? r.json() : null).catch(() => null),
+      ]);
+
+      const rawKlines = klinesRes as any[];
+      if (!rawKlines || rawKlines.length < 30) {
+        return res.status(503).json({ message: "Insufficient market data available. Try again shortly." });
+      }
+
+      const candles = rawKlines.map((k: any) => ({
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+      }));
+      const closes = candles.map(c => c.close);
+      const volumes = candles.map(c => c.volume);
+
+      const rsi = computeRSI(closes, 14);
+      const ema9 = computeEMAArray(closes, 9);
+      const ema21 = computeEMAArray(closes, 21);
+      const ema50 = computeEMAArray(closes, 50);
+      const macdLine = ema9.length > 1 ? ema9[ema9.length - 1] - ema21[ema21.length - 1] : 0;
+      const prevMacdLine = ema9.length > 2 ? ema9[ema9.length - 2] - ema21[ema21.length - 2] : 0;
+      const avgVol = volumes.slice(0, -1).reduce((a, b) => a + b, 0) / Math.max(volumes.length - 1, 1);
+      const currentVol = volumes[volumes.length - 1] || 0;
+      const volRatio = avgVol > 0 ? currentVol / avgVol : 1;
+
+      let signalScore = 0;
+      if (rsi < 30) signalScore += 2;
+      else if (rsi < 40) signalScore += 1;
+      else if (rsi > 70) signalScore -= 2;
+      else if (rsi > 60) signalScore -= 1;
+      if (ema9[ema9.length - 1] > ema21[ema21.length - 1]) signalScore += 1;
+      else signalScore -= 1;
+      if (currentPrice > ema50[ema50.length - 1]) signalScore += 1;
+      else signalScore -= 1;
+      if (macdLine > 0 && prevMacdLine <= 0) signalScore += 1;
+      if (macdLine < 0 && prevMacdLine >= 0) signalScore -= 1;
+      if (volRatio > 2) signalScore += (macdLine > 0 ? 1 : -1);
+
+      let signal: string = "neutral";
+      if (signalScore >= 3) signal = "strong_buy";
+      else if (signalScore >= 1) signal = "buy";
+      else if (signalScore <= -3) signal = "strong_sell";
+      else if (signalScore <= -1) signal = "sell";
+
+      const tolerance = currentPrice * 0.005;
+      const levels: { price: number; strength: number; type: string; touches: number }[] = [];
+      for (let i = 2; i < candles.length - 2; i++) {
+        const c = candles[i];
+        const isSwingHigh = c.high > candles[i - 1].high && c.high > candles[i - 2].high &&
+                            c.high > candles[i + 1].high && c.high > candles[i + 2].high;
+        const isSwingLow = c.low < candles[i - 1].low && c.low < candles[i - 2].low &&
+                           c.low < candles[i + 1].low && c.low < candles[i + 2].low;
+        if (isSwingHigh) {
+          const existing = levels.find(l => Math.abs(l.price - c.high) < tolerance);
+          if (existing) { existing.touches++; existing.strength += c.volume; }
+          else levels.push({ price: +c.high.toFixed(8), strength: c.volume, type: c.high > currentPrice ? "resistance" : "support", touches: 1 });
+        }
+        if (isSwingLow) {
+          const existing = levels.find(l => Math.abs(l.price - c.low) < tolerance);
+          if (existing) { existing.touches++; existing.strength += c.volume; }
+          else levels.push({ price: +c.low.toFixed(8), strength: c.volume, type: c.low > currentPrice ? "resistance" : "support", touches: 1 });
+        }
+      }
+      levels.sort((a, b) => b.touches * b.strength - a.touches * a.strength);
+      const supports = levels.filter(l => l.type === "support").sort((a, b) => b.price - a.price);
+      const resistances = levels.filter(l => l.type === "resistance").sort((a, b) => a.price - b.price);
+
+      const nearestSupport = supports.length > 0 ? supports[0] : null;
+      const nearestResistance = resistances.length > 0 ? resistances[0] : null;
+      const nextSupportBelow = supports.length > 1 ? supports[1] : null;
+      const nextResistanceAbove = resistances.length > 1 ? resistances[1] : null;
+
+      const supportDist = nearestSupport ? ((currentPrice - nearestSupport.price) / currentPrice * 100) : null;
+      const resistanceDist = nearestResistance ? ((nearestResistance.price - currentPrice) / currentPrice * 100) : null;
+
+      let currentZone = "middle";
+      if (supportDist !== null && supportDist < 2) currentZone = "near_support";
+      if (resistanceDist !== null && resistanceDist < 2) currentZone = "near_resistance";
+      if (supportDist !== null && supportDist < 1) currentZone = "at_support";
+      if (resistanceDist !== null && resistanceDist < 1) currentZone = "at_resistance";
+
+      let trendScore = 0;
+      if (ema9[ema9.length - 1] > ema21[ema21.length - 1]) trendScore++;
+      if (ema21[ema21.length - 1] > ema50[ema50.length - 1]) trendScore++;
+      if (currentPrice > ema9[ema9.length - 1]) trendScore++;
+      if (currentPrice > ema21[ema21.length - 1]) trendScore++;
+      if (ema9[ema9.length - 1] < ema21[ema21.length - 1]) trendScore--;
+      if (ema21[ema21.length - 1] < ema50[ema50.length - 1]) trendScore--;
+      if (currentPrice < ema9[ema9.length - 1]) trendScore--;
+      if (currentPrice < ema21[ema21.length - 1]) trendScore--;
+
+      let trendDirection = "sideways";
+      if (trendScore >= 3) trendDirection = "strong_up";
+      else if (trendScore >= 1) trendDirection = "up";
+      else if (trendScore <= -3) trendDirection = "strong_down";
+      else if (trendScore <= -1) trendDirection = "down";
+
+      const depth = depthRes as { bids: string[][]; asks: string[][] };
+      const bidVolume = depth.bids.reduce((sum: number, [p, q]: string[]) => sum + parseFloat(p) * parseFloat(q), 0);
+      const askVolume = depth.asks.reduce((sum: number, [p, q]: string[]) => sum + parseFloat(p) * parseFloat(q), 0);
+      const totalDepth = bidVolume + askVolume;
+      const buyPressure = totalDepth > 0 ? (bidVolume / totalDepth) * 100 : 50;
+
+      let sentiment = "neutral";
+      if (buyPressure > 60) sentiment = "bullish";
+      else if (buyPressure > 55) sentiment = "slightly_bullish";
+      else if (buyPressure < 40) sentiment = "bearish";
+      else if (buyPressure < 45) sentiment = "slightly_bearish";
+
+      const fngValue = fngRes?.data?.[0]?.value ? parseInt(fngRes.data[0].value) : null;
+      const fngClassification = fngRes?.data?.[0]?.value_classification || null;
+
+      let rsiExplain = "";
+      if (rsi < 30) rsiExplain = "Oversold - Price has dropped a lot and may bounce back up soon";
+      else if (rsi < 40) rsiExplain = "Getting low - Price is relatively cheap, potential buying area";
+      else if (rsi > 70) rsiExplain = "Overbought - Price has risen a lot and may pull back soon";
+      else if (rsi > 60) rsiExplain = "Getting high - Price is relatively expensive, be cautious buying";
+      else rsiExplain = "Neutral - Price momentum is balanced, no extreme reading";
+
+      let emaExplain = "";
+      if (trendScore >= 3) emaExplain = "All moving averages confirm a strong uptrend";
+      else if (trendScore >= 1) emaExplain = "Moving averages lean bullish, trend is moderately up";
+      else if (trendScore <= -3) emaExplain = "All moving averages confirm a strong downtrend";
+      else if (trendScore <= -1) emaExplain = "Moving averages lean bearish, trend is moderately down";
+      else emaExplain = "Moving averages are mixed, no clear trend direction";
+
+      let macdExplain = "";
+      if (macdLine > 0 && prevMacdLine <= 0) macdExplain = "MACD just crossed bullish - new upward momentum starting";
+      else if (macdLine < 0 && prevMacdLine >= 0) macdExplain = "MACD just crossed bearish - new downward momentum starting";
+      else if (macdLine > 0) macdExplain = "MACD is positive - upward momentum is active";
+      else if (macdLine < 0) macdExplain = "MACD is negative - downward momentum is active";
+      else macdExplain = "MACD is flat - no strong momentum";
+
+      let volumeExplain = "";
+      if (volRatio > 3) volumeExplain = "Volume is extremely high (3x+ average) - big move happening";
+      else if (volRatio > 2) volumeExplain = "Volume spike detected (2x average) - increased interest";
+      else if (volRatio > 1.5) volumeExplain = "Volume is above average - some interest building";
+      else if (volRatio < 0.5) volumeExplain = "Volume is very low - market is quiet, be cautious of fakeouts";
+      else volumeExplain = "Volume is normal - nothing unusual";
+
+      let verdict = "";
+      let verdictType: "buy" | "sell" | "hold" | "caution" = "hold";
+      if (signal === "strong_buy" && currentZone.includes("support")) {
+        verdict = "Strong buying opportunity near support zone. Technical indicators and price position align for a potential entry.";
+        verdictType = "buy";
+      } else if (signal === "strong_buy") {
+        verdict = "Indicators show strong buying signals, but price is not near a key support. Consider waiting for a pullback to support for a better entry.";
+        verdictType = "buy";
+      } else if (signal === "buy" && currentZone.includes("support")) {
+        verdict = "Good potential entry point. Price is near support with positive indicators. Consider buying with a stop-loss below the support zone.";
+        verdictType = "buy";
+      } else if (signal === "buy") {
+        verdict = "Indicators are moderately positive. Look for a dip toward the nearest support for a better entry price.";
+        verdictType = "hold";
+      } else if (signal === "strong_sell" && currentZone.includes("resistance")) {
+        verdict = "Strong sell signal near resistance. If you hold this coin, consider taking some profits here. Not a good time to buy.";
+        verdictType = "sell";
+      } else if (signal === "strong_sell") {
+        verdict = "Indicators are very bearish. Avoid buying. If holding, consider setting tight stop-losses.";
+        verdictType = "sell";
+      } else if (signal === "sell" && currentZone.includes("resistance")) {
+        verdict = "Price is near resistance with negative indicators. This is not an ideal buying spot. Consider selling some holdings if profitable.";
+        verdictType = "sell";
+      } else if (signal === "sell") {
+        verdict = "Indicators lean slightly negative. Hold off on new buys and watch for a clearer signal.";
+        verdictType = "caution";
+      } else {
+        verdict = "Market is neutral for this coin. No strong signal in either direction. Wait for a clearer setup before entering a trade.";
+        verdictType = "hold";
+      }
+
+      const response = {
+        symbol,
+        currentPrice,
+        priceChange24h: +priceChange24h.toFixed(2),
+        volume24h,
+        zones: {
+          currentZone,
+          nearestSupport: nearestSupport ? { price: nearestSupport.price, distance: supportDist ? +supportDist.toFixed(2) : null, touches: nearestSupport.touches } : null,
+          nearestResistance: nearestResistance ? { price: nearestResistance.price, distance: resistanceDist ? +resistanceDist.toFixed(2) : null, touches: nearestResistance.touches } : null,
+          nextSupportBelow: nextSupportBelow ? { price: nextSupportBelow.price, touches: nextSupportBelow.touches } : null,
+          nextResistanceAbove: nextResistanceAbove ? { price: nextResistanceAbove.price, touches: nextResistanceAbove.touches } : null,
+          buyZone: nearestSupport ? `Around $${nearestSupport.price.toLocaleString()} (nearest support)` : "No clear support identified",
+          sellZone: nearestResistance ? `Around $${nearestResistance.price.toLocaleString()} (nearest resistance)` : "No clear resistance identified",
+        },
+        trend: {
+          direction: trendDirection,
+          score: trendScore,
+          explain: emaExplain,
+        },
+        indicators: {
+          rsi: { value: +rsi.toFixed(2), explain: rsiExplain },
+          macd: { value: +macdLine.toFixed(6), explain: macdExplain, crossover: macdLine > 0 && prevMacdLine <= 0, crossunder: macdLine < 0 && prevMacdLine >= 0 },
+          volume: { ratio: +volRatio.toFixed(2), explain: volumeExplain },
+          ema: {
+            ema9: +ema9[ema9.length - 1]?.toFixed(6),
+            ema21: +ema21[ema21.length - 1]?.toFixed(6),
+            ema50: +ema50[ema50.length - 1]?.toFixed(6),
+          },
+        },
+        sentiment: {
+          orderBook: sentiment,
+          buyPressure: +buyPressure.toFixed(1),
+          bidVolume: +bidVolume.toFixed(2),
+          askVolume: +askVolume.toFixed(2),
+        },
+        fearGreed: fngValue !== null ? { value: fngValue, classification: fngClassification } : null,
+        signal: {
+          overall: signal,
+          score: signalScore,
+        },
+        verdict: {
+          text: verdict,
+          type: verdictType,
+        },
+      };
+
+      coinAnalysisCache[symbol] = { data: response, timestamp: now };
+      res.json(response);
+    } catch (err) {
+      console.error("Coin analysis error:", err);
+      res.status(500).json({ message: "Failed to analyze coin" });
+    }
+  });
+
   return httpServer;
 }
