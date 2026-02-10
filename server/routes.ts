@@ -2628,6 +2628,122 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/futures/today-pnl", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const user = req.user as any;
+      const now = new Date();
+      const todayStart = new Date(now);
+      todayStart.setHours(6, 0, 0, 0);
+      if (now.getHours() < 6) {
+        todayStart.setDate(todayStart.getDate() - 1);
+      }
+
+      const allTrades = await storage.getFuturesTrades(user.id);
+      const todayCloseTrades = allTrades.filter((t) => {
+        if (t.action !== "close") return false;
+        const ts = t.timestamp ? new Date(t.timestamp) : new Date();
+        return ts >= todayStart;
+      });
+
+      let totalPnl = 0;
+      const perSymbol: Record<string, number> = {};
+      for (const t of todayCloseTrades) {
+        const netPnl = (t.realizedPnl || 0) - (t.fee || 0) - (t.fundingFee || 0);
+        totalPnl += netPnl;
+        perSymbol[t.symbol] = (perSymbol[t.symbol] || 0) + netPnl;
+      }
+
+      const openPositions = await storage.getOpenFuturesPositions(user.id);
+      let unrealizedPnl = 0;
+      for (const pos of openPositions) {
+        const ticker = tickerMap.get(pos.symbol);
+        const currentPrice = ticker ? parseFloat(ticker.lastPrice) : Number(pos.entryPrice);
+        const qty = Number(pos.quantity);
+        const entry = Number(pos.entryPrice);
+        unrealizedPnl += pos.side === "long"
+          ? (currentPrice - entry) * qty
+          : (entry - currentPrice) * qty;
+      }
+
+      const walletData = await storage.getFuturesWallet(user.id);
+      const walletBalance = walletData?.balance ?? 0;
+      const currentValue = walletBalance + unrealizedPnl;
+
+      res.json({
+        totalPnl,
+        perSymbol,
+        unrealizedPnl,
+        currentValue,
+        periodStart: todayStart.toISOString(),
+      });
+    } catch (e) {
+      console.error("Futures today PNL error:", e);
+      res.status(500).json({ message: "Failed to calculate futures PNL" });
+    }
+  });
+
+  app.get("/api/futures/pnl-history", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const user = req.user as any;
+      const allTrades = await storage.getFuturesTrades(user.id);
+      const closeTrades = allTrades.filter((t) => t.action === "close");
+
+      if (closeTrades.length === 0) {
+        return res.json({ dailyPnl: [], cumulativePnl: 0, weeklyPnl: 0 });
+      }
+
+      closeTrades.sort((a, b) => {
+        const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return ta - tb;
+      });
+
+      function getTradingDayKey(ts: Date): string {
+        const shifted = new Date(ts);
+        if (shifted.getHours() < 6) {
+          shifted.setDate(shifted.getDate() - 1);
+        }
+        return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, "0")}-${String(shifted.getDate()).padStart(2, "0")}`;
+      }
+
+      const dailyMap: Record<string, number> = {};
+      for (const t of closeTrades) {
+        const ts = t.timestamp ? new Date(t.timestamp) : new Date();
+        const dayKey = getTradingDayKey(ts);
+        if (!dailyMap[dayKey]) dailyMap[dayKey] = 0;
+        const netPnl = (t.realizedPnl || 0) - (t.fee || 0) - (t.fundingFee || 0);
+        dailyMap[dayKey] += netPnl;
+      }
+
+      const sortedDays = Object.keys(dailyMap).sort();
+      let cumulative = 0;
+      const dailyPnl = sortedDays.map((day) => {
+        cumulative += dailyMap[day];
+        return { date: day, pnl: dailyMap[day], cumulative };
+      });
+
+      const now = new Date();
+      const sevenDaysAgo = new Date(now);
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const sevenDayKey = `${sevenDaysAgo.getFullYear()}-${String(sevenDaysAgo.getMonth() + 1).padStart(2, "0")}-${String(sevenDaysAgo.getDate()).padStart(2, "0")}`;
+
+      const weeklyPnl = dailyPnl
+        .filter((d) => d.date >= sevenDayKey)
+        .reduce((sum, d) => sum + d.pnl, 0);
+
+      res.json({
+        dailyPnl,
+        cumulativePnl: cumulative,
+        weeklyPnl,
+      });
+    } catch (e) {
+      console.error("Futures PNL history error:", e);
+      res.status(500).json({ message: "Failed to calculate futures PNL history" });
+    }
+  });
+
   // Admin: top up futures wallet
   app.post("/api/admin/futures-topup", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);

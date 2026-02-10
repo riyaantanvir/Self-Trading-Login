@@ -317,3 +317,32 @@ export function useTodayPnl() {
     refetchInterval: 5000,
   });
 }
+
+export function useFuturesTodayPnl() {
+  return useQuery({
+    queryKey: ["/api/futures/today-pnl"],
+    queryFn: async () => {
+      const res = await fetch("/api/futures/today-pnl", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch futures today PNL");
+      return await res.json() as { totalPnl: number; perSymbol: Record<string, number>; unrealizedPnl: number; currentValue: number; periodStart: string };
+    },
+    refetchInterval: 5000,
+  });
+}
+
+export interface FuturesPnlHistoryData {
+  dailyPnl: DailyPnlEntry[];
+  cumulativePnl: number;
+  weeklyPnl: number;
+}
+
+export function useFuturesPnlHistory() {
+  return useQuery({
+    queryKey: ["/api/futures/pnl-history"],
+    queryFn: async () => {
+      const res = await fetch("/api/futures/pnl-history", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch futures PNL history");
+      return await res.json() as FuturesPnlHistoryData;
+    },
+  });
+}

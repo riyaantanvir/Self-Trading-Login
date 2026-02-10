@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
-import { usePortfolio, useTickers, useTodayPnl } from "@/hooks/use-trades";
+import { usePortfolio, useTickers, useTodayPnl, useFuturesTodayPnl } from "@/hooks/use-trades";
 import { useBinanceWebSocket } from "@/hooks/use-binance-ws";
 import { useAuth } from "@/hooks/use-auth";
 import { LayoutShell } from "@/components/layout-shell";
@@ -254,6 +254,7 @@ export default function AssetsPage() {
             setBalanceVisible={setBalanceVisible}
             formatAmount={formatAmount}
             navigate={navigate}
+            formatQuantity={formatQuantity}
           />
         ) : (
         <>
@@ -481,6 +482,7 @@ function FuturesAssetsContent({
   setBalanceVisible,
   formatAmount,
   navigate,
+  formatQuantity,
 }: {
   futuresBalance: number;
   futuresPositions: any[];
@@ -490,9 +492,11 @@ function FuturesAssetsContent({
   setBalanceVisible: (v: boolean) => void;
   formatAmount: (val: number, decimals?: number) => string;
   navigate: (path: string) => void;
+  formatQuantity: (val: number) => string;
 }) {
   const { toast } = useToast();
   const [closingId, setClosingId] = useState<number | null>(null);
+  const { data: futuresTodayPnlData } = useFuturesTodayPnl();
 
   const closePositionMutation = useMutation({
     mutationFn: async (positionId: number) => {
@@ -503,6 +507,7 @@ function FuturesAssetsContent({
       toast({ title: "Position closed successfully" });
       queryClient.invalidateQueries({ queryKey: ["/api/futures/positions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/futures/wallet"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/futures/today-pnl"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
       setClosingId(null);
     },
@@ -528,6 +533,12 @@ function FuturesAssetsContent({
   const totalMargin = openPositions.reduce((sum: number, pos: any) => sum + (Number(pos.isolatedMargin) || (Number(pos.entryPrice) * Number(pos.quantity) / Number(pos.leverage))), 0);
   const totalFuturesValue = futuresBalance + unrealizedPnl;
 
+  const futuresTodayPnl = futuresTodayPnlData?.totalPnl ?? 0;
+  const futuresCurrentValue = futuresTodayPnlData?.currentValue ?? totalFuturesValue;
+  const futuresTodayPnlPercent = futuresCurrentValue > 0
+    ? (futuresTodayPnl / futuresCurrentValue) * 100
+    : 0;
+
   return (
     <>
       <div className="mb-6">
@@ -546,6 +557,24 @@ function FuturesAssetsContent({
             {balanceVisible ? formatAmount(totalFuturesValue) : "****"}
           </span>
           <span className="text-base sm:text-lg text-muted-foreground">USDT</span>
+        </div>
+        <div className="text-sm text-muted-foreground mb-1" data-testid="text-futures-usd">
+          {balanceVisible ? `~ $${formatAmount(totalFuturesValue)}` : "~ $****"}
+        </div>
+        <div
+          className="flex flex-wrap items-center gap-1 text-sm cursor-pointer group"
+          onClick={() => navigate("/futures-pnl")}
+          data-testid="link-futures-today-pnl"
+        >
+          <span className="text-muted-foreground group-hover:underline">Today's PNL</span>
+          <span
+            className={`font-mono font-medium group-hover:underline text-xs sm:text-sm ${futuresTodayPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`}
+            data-testid="text-futures-today-pnl"
+          >
+            {balanceVisible
+              ? `${futuresTodayPnl >= 0 ? "+" : ""}${formatAmount(futuresTodayPnl)} USDT (${futuresTodayPnl >= 0 ? "+" : ""}${futuresTodayPnlPercent.toFixed(2)}%)`
+              : "****"}
+          </span>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-4">
