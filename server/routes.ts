@@ -2489,8 +2489,15 @@ export async function registerRoutes(
         const quantity = b.balance;
         if (quantity <= 0) continue;
 
-        if (["USD", "USDT", "USDC", "ZUSD"].includes(b.currency)) {
-          totalValue += quantity;
+        if (["USD", "USDT", "USDC", "ZUSD", "EUR"].includes(b.currency)) {
+          // Cash balances are already in USD value (roughly)
+          // For simplicity we treat them as 1:1 USD unless it's EUR
+          if (b.currency === "EUR") {
+            const ticker = tickerMap.get("EURUSD") || tickerMap.get("EURUSDT");
+            totalValue += quantity * (ticker ? parseFloat(ticker.lastPrice) : 1.08);
+          } else {
+            totalValue += quantity;
+          }
         } else {
           const symbol = b.currency === "BTC" ? "BTCUSDT" : `${b.currency}USDT`;
           const ticker = tickerMap.get(symbol);

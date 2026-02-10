@@ -86,10 +86,22 @@ async function detectQuoteCurrency(creds: KrakenCredentials): Promise<string> {
 }
 
 function fromKrakenAsset(asset: string): string {
-  if (asset === "XXBT") return "BTC";
-  if (asset === "XETH") return "ETH";
-  if (asset === "ZUSD") return "USD";
-  if (asset === "ZEUR") return "EUR";
+  // Common Kraken asset mappings
+  const KRAKEN_TO_STANDARD: Record<string, string> = {
+    "XXBT": "BTC",
+    "XBT": "BTC",
+    "XETH": "ETH",
+    "XXRP": "XRP",
+    "XSOL": "SOL",
+    "ZUSD": "USD",
+    "ZEUR": "EUR",
+    "USDT": "USDT",
+    "USDC": "USDC",
+  };
+
+  if (KRAKEN_TO_STANDARD[asset]) return KRAKEN_TO_STANDARD[asset];
+  
+  // Handle Kraken's X/Z prefixes for other assets
   if (asset.startsWith("X") && asset.length === 4) return asset.substring(1);
   if (asset.startsWith("Z") && asset.length === 4) return asset.substring(1);
   return asset;
@@ -102,8 +114,24 @@ export async function getKrakenBalance(
   if (!result.success) {
     return { success: false, error: result.error };
   }
-  console.log("[Kraken] Balance result:", JSON.stringify(result.result));
-  return { success: true, balances: result.result };
+  
+  // Create a normalized balance object to prevent double counting
+  // Kraken returns both standard and "X/Z" prefixed assets in some cases
+  const normalized: Record<string, string> = {};
+  for (const [asset, val] of Object.entries(result.result || {})) {
+    const standardName = fromKrakenAsset(asset);
+    const quantity = parseFloat(val as string);
+    if (quantity === 0) continue;
+    
+    // We only take the FIRST non-zero balance we see for a standard name
+    // to avoid double counting if Kraken returns both XBT and XXBT (unlikely but possible)
+    if (!normalized[standardName]) {
+      normalized[standardName] = val as string;
+    }
+  }
+
+  console.log("[Kraken] Normalized balances:", JSON.stringify(normalized));
+  return { success: true, balances: normalized };
 }
 
 export async function getKrakenUsdtBalance(
