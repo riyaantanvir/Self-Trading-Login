@@ -62,6 +62,15 @@ export const priceAlerts = pgTable("price_alerts", {
   triggeredAt: timestamp("triggered_at"),
 });
 
+export const trackedCoins = pgTable("tracked_coins", {
+  id: serial("id").primaryKey(),
+  symbol: text("symbol").notNull().unique(),
+});
+
+export const insertTrackedCoinSchema = createInsertSchema(trackedCoins).omit({ id: true });
+export type TrackedCoin = typeof trackedCoins.$inferSelect;
+export type InsertTrackedCoin = z.infer<typeof insertTrackedCoinSchema>;
+
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });
 export const insertTradeSchema = createInsertSchema(trades).omit({ id: true, userId: true, timestamp: true, total: true });
 export const insertPortfolioSchema = createInsertSchema(portfolio).omit({ id: true });

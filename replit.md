@@ -88,6 +88,8 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Cancel returns reserved balance (buy) or holdings (sell)
 
 ## Recent Changes
+- Feb 2026: Added Coin Management in Admin Panel - admin can add/remove any Binance coin from tracked list; DB-driven coin list (tracked_coins table), WebSocket auto-reconnects when list changes
+- Feb 2026: Added Settings page (/settings) - moved logout from header, admin panel link for admins
 - Feb 2026: Added Quick Analysis popup on token detail page (BarChart3 button in header) - aggregated coin analysis showing S/R zones, trend, RSI/MACD/volume explained simply, sentiment, Fear & Greed, buy/sell verdict for beginners
 - Feb 2026: Added Smart Signal Alerts - background scanner checks every 60s for buy signals near support and strong sell signals near resistance, sends Telegram alerts with S/R zone info, 30min cooldown per coin, toggleable per user on Alerts page
 - Feb 2026: Expanded Trade Signals to 11 sub-sections: added Divergence (RSI/MACD divergence detector), Multi-TF (5m/15m/1H/4H/1D alignment), Vol Profile (VWAP/POC/value area), Momentum (1H/4H/12H/24H heatmap), Order Flow (bid/ask imbalance)

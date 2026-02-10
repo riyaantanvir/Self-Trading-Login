@@ -26,12 +26,29 @@ async function sendTelegramMessage(botToken: string, chatId: string, message: st
   }
 }
 
-const TRACKED_SYMBOLS = [
+const DEFAULT_SYMBOLS = [
   "btcusdt", "ethusdt", "bnbusdt", "xrpusdt", "solusdt",
   "adausdt", "dogeusdt", "dotusdt", "trxusdt", "linkusdt",
   "avaxusdt", "uniusdt", "ltcusdt", "atomusdt", "etcusdt",
   "xlmusdt", "nearusdt", "algousdt", "filusdt", "polusdt",
 ];
+
+let TRACKED_SYMBOLS: string[] = [...DEFAULT_SYMBOLS];
+let reconnectBinanceWs: (() => void) | null = null;
+
+async function loadTrackedSymbols(): Promise<string[]> {
+  try {
+    const coins = await storage.getTrackedCoins();
+    if (coins.length > 0) {
+      TRACKED_SYMBOLS = coins.map(c => c.symbol.toLowerCase());
+    } else {
+      TRACKED_SYMBOLS = [...DEFAULT_SYMBOLS];
+    }
+  } catch {
+    TRACKED_SYMBOLS = [...DEFAULT_SYMBOLS];
+  }
+  return TRACKED_SYMBOLS;
+}
 
 interface TickerData {
   symbol: string;
@@ -46,7 +63,9 @@ interface TickerData {
 
 const tickerMap = new Map<string, TickerData>();
 
-function setupBinanceLiveStream(httpServer: Server) {
+async function setupBinanceLiveStream(httpServer: Server) {
+  await loadTrackedSymbols();
+
   const wss = new WebSocketServer({ server: httpServer, path: "/ws/market" });
   const clients = new Set<WebSocket>();
   let binanceWs: WebSocket | null = null;
@@ -585,6 +604,11 @@ function setupBinanceLiveStream(httpServer: Server) {
   }, 60000);
 
   connectBinance();
+
+  reconnectBinanceWs = async () => {
+    await loadTrackedSymbols();
+    connectBinance();
+  };
 
   wss.on("connection", (ws) => {
     clients.add(ws);
@@ -2254,6 +2278,50 @@ export async function registerRoutes(
       if (e instanceof z.ZodError) {
         return res.status(400).json({ message: e.errors[0].message });
       }
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/admin/tracked-coins", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
+    try {
+      const coins = await storage.getTrackedCoins();
+      res.json(coins.length > 0 ? coins.map(c => c.symbol) : TRACKED_SYMBOLS);
+    } catch {
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/admin/tracked-coins", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
+    try {
+      const { symbol } = z.object({ symbol: z.string().min(1) }).parse(req.body);
+      const sym = symbol.toLowerCase();
+      await storage.addTrackedCoin(sym);
+      if (reconnectBinanceWs) reconnectBinanceWs();
+      const coins = await storage.getTrackedCoins();
+      res.json(coins.map(c => c.symbol));
+    } catch (e) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.delete("/api/admin/tracked-coins/:symbol", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    if (!user.isAdmin) return res.status(403).json({ message: "Admin access required" });
+    try {
+      const sym = req.params.symbol.toLowerCase();
+      await storage.removeTrackedCoin(sym);
+      if (reconnectBinanceWs) reconnectBinanceWs();
+      const coins = await storage.getTrackedCoins();
+      res.json(coins.map(c => c.symbol));
+    } catch {
       res.status(500).json({ message: "Internal server error" });
     }
   });

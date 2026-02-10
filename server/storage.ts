@@ -1,4 +1,4 @@
-import { users, trades, portfolio, watchlist, priceAlerts, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert } from "@shared/schema";
+import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lt } from "drizzle-orm";
 
@@ -29,6 +29,10 @@ export interface IStorage {
   getUsersWithNewsAlerts(): Promise<User[]>;
   updateSignalAlerts(id: number, enabled: boolean): Promise<void>;
   getUsersWithSignalAlerts(): Promise<User[]>;
+
+  getTrackedCoins(): Promise<TrackedCoin[]>;
+  addTrackedCoin(symbol: string): Promise<TrackedCoin>;
+  removeTrackedCoin(symbol: string): Promise<void>;
 
   getPriceAlerts(userId: number): Promise<PriceAlert[]>;
   getActivePriceAlerts(): Promise<PriceAlert[]>;
@@ -157,6 +161,21 @@ export class DatabaseStorage implements IStorage {
 
   async getUsersWithSignalAlerts(): Promise<User[]> {
     return await db.select().from(users).where(eq(users.signalAlertsEnabled, true));
+  }
+
+  async getTrackedCoins(): Promise<TrackedCoin[]> {
+    return await db.select().from(trackedCoins);
+  }
+
+  async addTrackedCoin(symbol: string): Promise<TrackedCoin> {
+    const existing = await db.select().from(trackedCoins).where(eq(trackedCoins.symbol, symbol));
+    if (existing.length > 0) return existing[0];
+    const [coin] = await db.insert(trackedCoins).values({ symbol }).returning();
+    return coin;
+  }
+
+  async removeTrackedCoin(symbol: string): Promise<void> {
+    await db.delete(trackedCoins).where(eq(trackedCoins.symbol, symbol));
   }
 
   async getPriceAlerts(userId: number): Promise<PriceAlert[]> {

@@ -12,15 +12,14 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Users,
   Wallet,
-  Settings,
-  Shield,
-  BarChart3,
-  Bell,
-  Lock,
   ArrowLeft,
   DollarSign,
   Plus,
   Loader2,
+  Coins,
+  Search,
+  X,
+  Trash2,
 } from "lucide-react";
 import {
   Dialog,
@@ -30,7 +29,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-type AdminView = "overview" | "users";
+type AdminView = "overview" | "users" | "coins";
 
 interface AdminUser {
   id: number;
@@ -40,44 +39,23 @@ interface AdminUser {
   balance: number;
 }
 
-const comingSoonSections = [
-  {
-    title: "Trading Controls",
-    description: "Set trading limits, manage fees, and configure trading pairs",
-    icon: BarChart3,
-  },
-  {
-    title: "Security Settings",
-    description: "Manage authentication, session settings, and access controls",
-    icon: Shield,
-  },
-  {
-    title: "Notifications",
-    description: "Configure alerts, announcements, and system notifications",
-    icon: Bell,
-  },
-  {
-    title: "Access Control",
-    description: "Manage admin roles, permissions, and API key access",
-    icon: Lock,
-  },
-  {
-    title: "Platform Settings",
-    description: "General platform configuration, branding, and preferences",
-    icon: Settings,
-  },
-];
-
 export default function AdminPanel() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [view, setView] = useState<AdminView>("overview");
   const [topUpUserId, setTopUpUserId] = useState<number | null>(null);
   const [topUpAmount, setTopUpAmount] = useState("");
+  const [coinSearch, setCoinSearch] = useState("");
+  const [addingCoin, setAddingCoin] = useState("");
 
   const usersQuery = useQuery<AdminUser[]>({
     queryKey: ["/api/admin/users"],
     enabled: view === "users",
+  });
+
+  const trackedCoinsQuery = useQuery<string[]>({
+    queryKey: ["/api/admin/tracked-coins"],
+    enabled: view === "coins",
   });
 
   const topUpMutation = useMutation({
@@ -103,11 +81,170 @@ export default function AdminPanel() {
     },
   });
 
+  const addCoinMutation = useMutation({
+    mutationFn: async (symbol: string) => {
+      const res = await apiRequest("POST", "/api/admin/tracked-coins", { symbol });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Coin Added", description: `${addingCoin.toUpperCase()} is now being tracked` });
+      setAddingCoin("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/tracked-coins"] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed", description: error?.message || "Could not add coin", variant: "destructive" });
+    },
+  });
+
+  const removeCoinMutation = useMutation({
+    mutationFn: async (symbol: string) => {
+      const res = await apiRequest("DELETE", `/api/admin/tracked-coins/${symbol}`);
+      return res.json();
+    },
+    onSuccess: (_data, symbol) => {
+      toast({ title: "Coin Removed", description: `${symbol.toUpperCase()} removed from tracking` });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/tracked-coins"] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed", description: error?.message || "Could not remove coin", variant: "destructive" });
+    },
+  });
+
   if (!user?.isAdmin) {
     return <Redirect to="/" />;
   }
 
   const selectedUser = usersQuery.data?.find((u) => u.id === topUpUserId);
+
+  const filteredCoins = trackedCoinsQuery.data?.filter(c =>
+    c.toLowerCase().includes(coinSearch.toLowerCase())
+  ) || [];
+
+  if (view === "coins") {
+    return (
+      <LayoutShell>
+        <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setView("overview")}
+              data-testid="button-back-overview"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div>
+              <h1 className="text-xl font-bold text-foreground" data-testid="text-admin-coins-title">
+                Manage Tracked Coins
+              </h1>
+              <p className="text-xs text-muted-foreground">
+                Add or remove coins from your market list
+              </p>
+            </div>
+          </div>
+
+          <Card>
+            <CardContent className="p-4 space-y-3">
+              <div className="text-sm font-medium text-foreground">Add New Coin</div>
+              <p className="text-xs text-muted-foreground">
+                Enter the Binance trading pair symbol (e.g. SHIBUSDT, MATICUSDT, PEPEUSDT)
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="e.g. SHIBUSDT"
+                  value={addingCoin}
+                  onChange={(e) => setAddingCoin(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && addingCoin.trim()) {
+                      addCoinMutation.mutate(addingCoin.trim());
+                    }
+                  }}
+                  data-testid="input-add-coin"
+                />
+                <Button
+                  disabled={!addingCoin.trim() || addCoinMutation.isPending}
+                  onClick={() => addingCoin.trim() && addCoinMutation.mutate(addingCoin.trim())}
+                  data-testid="button-add-coin"
+                >
+                  {addCoinMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Plus className="w-4 h-4 mr-1" />
+                  )}
+                  Add
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search coins..."
+              className="pl-9"
+              value={coinSearch}
+              onChange={(e) => setCoinSearch(e.target.value)}
+              data-testid="input-search-coins"
+            />
+            {coinSearch && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-1 top-1/2 -translate-y-1/2"
+                onClick={() => setCoinSearch("")}
+              >
+                <X className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
+
+          <div className="text-xs text-muted-foreground">
+            {trackedCoinsQuery.data?.length || 0} coins tracked
+          </div>
+
+          {trackedCoinsQuery.isLoading && (
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {filteredCoins.length > 0 && (
+            <div className="space-y-1">
+              {filteredCoins.map((coin) => (
+                <div
+                  key={coin}
+                  className="flex items-center justify-between p-3 rounded-md bg-card border border-border"
+                  data-testid={`row-coin-${coin}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Coins className="w-4 h-4 text-[#f0b90b]" />
+                    <span className="text-sm font-mono font-medium text-foreground">
+                      {coin.toUpperCase().replace("USDT", "")}<span className="text-muted-foreground">/USDT</span>
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeCoinMutation.mutate(coin)}
+                    disabled={removeCoinMutation.isPending}
+                    data-testid={`button-remove-${coin}`}
+                  >
+                    <Trash2 className="w-4 h-4 text-[#f6465d]" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!trackedCoinsQuery.isLoading && filteredCoins.length === 0 && coinSearch && (
+            <div className="text-center py-8 text-muted-foreground text-sm">
+              No coins matching "{coinSearch}"
+            </div>
+          )}
+        </div>
+      </LayoutShell>
+    );
+  }
 
   if (view === "users") {
     return (
@@ -313,32 +450,25 @@ export default function AdminPanel() {
             </CardContent>
           </Card>
 
-          {comingSoonSections.map((section) => (
-            <Card
-              key={section.title}
-              className="hover-elevate cursor-pointer"
-              data-testid={`card-admin-${section.title.toLowerCase().replace(/\s+/g, "-")}`}
-            >
-              <CardContent className="p-5">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-md bg-[#0ecb81]/10 flex items-center justify-center flex-shrink-0">
-                    <section.icon className="w-5 h-5 text-[#0ecb81]" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-semibold text-foreground text-sm">
-                      {section.title}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                      {section.description}
-                    </p>
-                    <span className="inline-block mt-2 text-[10px] font-medium text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-md">
-                      Coming Soon
-                    </span>
-                  </div>
+          <Card
+            className="hover-elevate cursor-pointer"
+            onClick={() => setView("coins")}
+            data-testid="card-admin-coin-management"
+          >
+            <CardContent className="p-5">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-md bg-[#f0b90b]/10 flex items-center justify-center flex-shrink-0">
+                  <Coins className="w-5 h-5 text-[#f0b90b]" />
                 </div>
-              </CardContent>
-            </Card>
-          ))}
+                <div className="min-w-0">
+                  <div className="font-semibold text-foreground text-sm">Coin Management</div>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    Add or remove coins from your tracked market list
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     </LayoutShell>
