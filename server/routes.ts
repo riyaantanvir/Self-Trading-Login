@@ -1817,6 +1817,14 @@ export async function registerRoutes(
         orderType: "market",
       });
 
+      storage.createNotification(
+        user.id,
+        data.type === "buy" ? "trade_buy" : "trade_sell",
+        `${data.type === "buy" ? "Buy" : "Sell"} ${data.symbol}`,
+        `${data.type === "buy" ? "Bought" : "Sold"} ${data.quantity} ${data.symbol} at $${data.price.toLocaleString()} for $${total.toFixed(2)}`,
+        JSON.stringify({ symbol: data.symbol, type: data.type, quantity: data.quantity, price: data.price, total })
+      ).catch(() => {});
+
       const updatedUser = await storage.getUser(user.id);
       res.status(201).json({ trade, user: updatedUser });
     } catch (e) {
@@ -2532,6 +2540,14 @@ export async function registerRoutes(
         closePrice: null,
       });
 
+      storage.createNotification(
+        user.id,
+        "futures_open",
+        `Futures ${side.toUpperCase()} ${sym}`,
+        `Opened ${side} ${sym} x${leverage} - ${quantity} @ $${currentPrice.toLocaleString()} ($${notional.toFixed(2)})`,
+        JSON.stringify({ symbol: sym, side, leverage, quantity, price: currentPrice, notional })
+      ).catch(() => {});
+
       res.json({ position, fee, margin, notional });
     } catch (e) {
       if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
@@ -2608,6 +2624,15 @@ export async function registerRoutes(
         positionId: position.id,
         closePrice,
       });
+
+      const pnlSign = pnl >= 0 ? "+" : "";
+      storage.createNotification(
+        user.id,
+        pnl >= 0 ? "futures_profit" : "futures_loss",
+        `Futures ${position.side.toUpperCase()} ${position.symbol} Closed`,
+        `Closed ${position.side} ${position.symbol} x${position.leverage} - PnL: ${pnlSign}$${pnl.toFixed(2)} | Fee: $${fee.toFixed(2)}`,
+        JSON.stringify({ symbol: position.symbol, side: position.side, pnl, fee, closePrice, closeQty })
+      ).catch(() => {});
 
       res.json({ pnl, fee, fundingFee, closePrice, closeQty, netReturn: netReturnFinal });
     } catch (e) {
@@ -2777,6 +2802,22 @@ export async function registerRoutes(
 
       const updatedSender = await storage.getUser(sender.id);
       const receiver = await storage.getUser(receiverId);
+
+      storage.createNotification(
+        sender.id,
+        "transfer_sent",
+        "Transfer Sent",
+        `Sent $${amount.toFixed(2)} USDT to ${receiver?.username || "Unknown"}${note ? ` - "${note}"` : ""}`,
+        JSON.stringify({ transferId: transfer.id, receiverId, amount })
+      ).catch(() => {});
+
+      storage.createNotification(
+        receiverId,
+        "transfer_received",
+        "Transfer Received",
+        `Received $${amount.toFixed(2)} USDT from ${updatedSender?.username || sender.username}${note ? ` - "${note}"` : ""}`,
+        JSON.stringify({ transferId: transfer.id, senderId: sender.id, amount })
+      ).catch(() => {});
 
       res.json({
         ...transfer,
@@ -3093,6 +3134,48 @@ export async function registerRoutes(
     } catch (err) {
       console.error("Coin analysis error:", err);
       res.status(500).json({ message: "Failed to analyze coin" });
+    }
+  });
+
+  // Notifications
+  app.get("/api/notifications", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const notifs = await storage.getNotifications((req.user as any).id);
+      res.json(notifs);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch notifications" });
+    }
+  });
+
+  app.get("/api/notifications/unread-count", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const count = await storage.getUnreadNotificationCount((req.user as any).id);
+      res.json({ count });
+    } catch {
+      res.status(500).json({ message: "Failed to fetch count" });
+    }
+  });
+
+  app.post("/api/notifications/mark-read", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      const { notificationId } = z.object({ notificationId: z.number().int() }).parse(req.body);
+      await storage.markNotificationRead((req.user as any).id, notificationId);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to mark read" });
+    }
+  });
+
+  app.post("/api/notifications/mark-all-read", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    try {
+      await storage.markAllNotificationsRead((req.user as any).id);
+      res.json({ success: true });
+    } catch {
+      res.status(500).json({ message: "Failed to mark all read" });
     }
   });
 

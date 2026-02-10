@@ -165,3 +165,18 @@ export const transfers = pgTable("transfers", {
 export const insertTransferSchema = createInsertSchema(transfers).omit({ id: true, timestamp: true });
 export type Transfer = typeof transfers.$inferSelect;
 export type InsertTransfer = z.infer<typeof insertTransferSchema>;
+
+export const notifications = pgTable("notifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  type: text("type").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  isRead: boolean("is_read").default(false).notNull(),
+  metadata: text("metadata").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({ id: true, createdAt: true });
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;

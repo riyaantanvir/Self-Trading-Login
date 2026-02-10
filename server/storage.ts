@@ -1,4 +1,4 @@
-import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, apiKeys, futuresWallet, futuresPositions, futuresTrades, transfers, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin, type ApiKey, type FuturesWallet, type FuturesPosition, type FuturesTrade, type Transfer } from "@shared/schema";
+import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, apiKeys, futuresWallet, futuresPositions, futuresTrades, transfers, notifications, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin, type ApiKey, type FuturesWallet, type FuturesPosition, type FuturesTrade, type Transfer, type Notification } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gte, lt, or, ilike } from "drizzle-orm";
 
@@ -61,6 +61,12 @@ export interface IStorage {
   createPriceAlert(userId: number, data: { symbol: string; targetPrice: number; direction: string; notifyTelegram?: boolean; alertType?: string; indicator?: string; indicatorCondition?: string; chartInterval?: string }): Promise<PriceAlert>;
   deletePriceAlert(userId: number, alertId: number): Promise<void>;
   triggerPriceAlert(alertId: number): Promise<void>;
+
+  getNotifications(userId: number): Promise<Notification[]>;
+  getUnreadNotificationCount(userId: number): Promise<number>;
+  createNotification(userId: number, type: string, title: string, message: string, metadata?: string): Promise<Notification>;
+  markNotificationRead(userId: number, notificationId: number): Promise<void>;
+  markAllNotificationsRead(userId: number): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -366,6 +372,42 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(transfers).where(
       or(eq(transfers.senderId, userId), eq(transfers.receiverId, userId))
     );
+  }
+
+  async getNotifications(userId: number): Promise<Notification[]> {
+    return await db.select().from(notifications)
+      .where(eq(notifications.userId, userId))
+      .orderBy(notifications.createdAt);
+  }
+
+  async getUnreadNotificationCount(userId: number): Promise<number> {
+    const result = await db.select().from(notifications)
+      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+    return result.length;
+  }
+
+  async createNotification(userId: number, type: string, title: string, message: string, metadata?: string): Promise<Notification> {
+    const [notification] = await db.insert(notifications).values({
+      userId,
+      type,
+      title,
+      message,
+      isRead: false,
+      metadata: metadata || "",
+    }).returning();
+    return notification;
+  }
+
+  async markNotificationRead(userId: number, notificationId: number): Promise<void> {
+    await db.update(notifications)
+      .set({ isRead: true })
+      .where(and(eq(notifications.id, notificationId), eq(notifications.userId, userId)));
+  }
+
+  async markAllNotificationsRead(userId: number): Promise<void> {
+    await db.update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.userId, userId));
   }
 }
 

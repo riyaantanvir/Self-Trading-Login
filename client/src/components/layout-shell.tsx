@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Wallet, History, TrendingUp, Briefcase, Bell, Settings, Send } from "lucide-react";
+import { NotificationBell } from "@/components/notification-bell";
 
 function useTradingMode() {
   const [mode, setMode] = useState<"spot" | "futures">(() => {
@@ -93,6 +94,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4">
+          <NotificationBell />
           <div className="text-right">
             <div className="text-[10px] sm:text-xs text-muted-foreground leading-none">Balance</div>
             <div className="text-xs sm:text-sm font-mono font-semibold text-[#0ecb81]" data-testid="text-balance">
