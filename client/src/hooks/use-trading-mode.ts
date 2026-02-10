@@ -3,10 +3,10 @@ import { useAuth } from "./use-auth";
 
 interface TradingModeData {
   tradingMode: string;
-  hasKucoinKeys: boolean;
+  hasBinanceKeys: boolean;
 }
 
-interface KucoinBalanceData {
+interface BinanceBalanceData {
   balance: number;
 }
 
@@ -20,21 +20,21 @@ export function useDemoRealMode() {
 
   const isRealMode = tradingModeData?.tradingMode === "real";
 
-  const { data: kucoinBalanceData } = useQuery<KucoinBalanceData>({
-    queryKey: ["/api/kucoin/balance"],
-    enabled: isRealMode && tradingModeData?.hasKucoinKeys === true,
+  const { data: binanceBalanceData } = useQuery<BinanceBalanceData>({
+    queryKey: ["/api/binance/balance"],
+    enabled: isRealMode && tradingModeData?.hasBinanceKeys === true,
     refetchInterval: 15000,
   });
 
-  const effectiveBalance = isRealMode && kucoinBalanceData?.balance !== undefined
-    ? kucoinBalanceData.balance
+  const effectiveBalance = isRealMode && binanceBalanceData?.balance !== undefined
+    ? binanceBalanceData.balance
     : Number(user?.balance ?? 0);
 
   return {
     isRealMode,
     effectiveBalance,
     tradingMode: tradingModeData?.tradingMode || "demo",
-    hasKucoinKeys: tradingModeData?.hasKucoinKeys || false,
-    kucoinBalance: kucoinBalanceData?.balance,
+    hasBinanceKeys: tradingModeData?.hasBinanceKeys || false,
+    binanceBalance: binanceBalanceData?.balance,
   };
 }

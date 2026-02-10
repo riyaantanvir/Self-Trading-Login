@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { setupAuth, hashPassword } from "./auth";
 import { z } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
-import { getKucoinUsdtBalance, getKucoinAllBalances, placeKucoinOrder, validateKucoinCredentials, getKucoinTicker } from "./kucoin";
+import { getBinanceUsdtBalance, getBinanceAllBalances, placeBinanceOrder, validateBinanceCredentials } from "./binance-trade";
 
 async function sendTelegramMessage(botToken: string, chatId: string, message: string): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -1940,30 +1940,30 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Minimum order amount is 5 USDT" });
       }
 
-      if (user.tradingMode === "real" && user.kucoinApiKey && user.kucoinApiSecret && user.kucoinPassphrase) {
-        const creds = { apiKey: user.kucoinApiKey, apiSecret: user.kucoinApiSecret, passphrase: user.kucoinPassphrase };
+      if (user.tradingMode === "real" && user.binanceApiKey && user.binanceApiSecret) {
+        const creds = { apiKey: user.binanceApiKey, apiSecret: user.binanceApiSecret };
 
-        const orderType = data.orderType === "market" ? "market" : "limit";
+        const orderType = data.orderType === "market" ? "MARKET" : "LIMIT";
         const orderOpts: any = {
           symbol: data.symbol,
-          side: data.type as "buy" | "sell",
+          side: data.type === "buy" ? "BUY" : "SELL",
           type: orderType,
         };
 
-        if (orderType === "market") {
+        if (orderType === "MARKET") {
           if (data.type === "buy") {
-            orderOpts.funds = total.toFixed(4);
+            orderOpts.quoteOrderQty = total.toFixed(4);
           } else {
-            orderOpts.size = data.quantity.toString();
+            orderOpts.quantity = data.quantity.toString();
           }
         } else {
           orderOpts.price = (data.limitPrice || data.price).toString();
-          orderOpts.size = data.quantity.toString();
+          orderOpts.quantity = data.quantity.toString();
         }
 
-        const kucoinResult = await placeKucoinOrder(creds, orderOpts);
-        if (!kucoinResult.success) {
-          return res.status(400).json({ message: `KuCoin order failed: ${kucoinResult.error}` });
+        const binanceResult = await placeBinanceOrder(creds, orderOpts);
+        if (!binanceResult.success) {
+          return res.status(400).json({ message: `Binance order failed: ${binanceResult.error}` });
         }
 
         const trade = await storage.createTrade({
@@ -1983,12 +1983,12 @@ export async function registerRoutes(
           user.id,
           data.type === "buy" ? "trade_buy" : "trade_sell",
           `[REAL] ${data.type === "buy" ? "Buy" : "Sell"} ${data.symbol}`,
-          `[KuCoin] ${data.type === "buy" ? "Bought" : "Sold"} ${data.quantity} ${data.symbol} at $${data.price.toLocaleString()} (Order: ${kucoinResult.data?.orderId})`,
-          JSON.stringify({ symbol: data.symbol, type: data.type, quantity: data.quantity, price: data.price, total, kucoinOrderId: kucoinResult.data?.orderId, mode: "real" })
+          `[Binance] ${data.type === "buy" ? "Bought" : "Sold"} ${data.quantity} ${data.symbol} at $${data.price.toLocaleString()} (Order: ${binanceResult.data?.orderId})`,
+          JSON.stringify({ symbol: data.symbol, type: data.type, quantity: data.quantity, price: data.price, total, binanceOrderId: binanceResult.data?.orderId, mode: "real" })
         ).catch(() => {});
 
         const updatedUser = await storage.getUser(user.id);
-        return res.status(201).json({ trade, user: updatedUser, kucoinOrderId: kucoinResult.data?.orderId, mode: "real" });
+        return res.status(201).json({ trade, user: updatedUser, binanceOrderId: binanceResult.data?.orderId, mode: "real" });
       }
 
       if (data.orderType !== "market") {
@@ -2406,7 +2406,6 @@ export async function registerRoutes(
     const user = await storage.getUser(req.user!.id);
     res.json({
       tradingMode: user?.tradingMode || "demo",
-      hasKucoinKeys: !!(user?.kucoinApiKey && user?.kucoinApiSecret && user?.kucoinPassphrase),
       hasBinanceKeys: !!(user?.binanceApiKey && user?.binanceApiSecret),
     });
   });
@@ -2419,8 +2418,8 @@ export async function registerRoutes(
 
     const user = await storage.getUser(req.user!.id);
     if (parsed.data.tradingMode === "real") {
-      if (!user?.kucoinApiKey || !user?.kucoinApiSecret || !user?.kucoinPassphrase) {
-        return res.status(400).json({ message: "Please configure KuCoin API keys first" });
+      if (!user?.binanceApiKey || !user?.binanceApiSecret) {
+        return res.status(400).json({ message: "Please configure Binance API keys first" });
       }
     }
 
@@ -2428,63 +2427,59 @@ export async function registerRoutes(
     res.json({ success: true, tradingMode: parsed.data.tradingMode });
   });
 
-  app.post("/api/user/kucoin-keys", async (req, res) => {
+  app.post("/api/user/binance-keys", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const schema = z.object({
       apiKey: z.string().min(1),
       apiSecret: z.string().min(1),
-      passphrase: z.string().min(1),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ message: "All fields are required" });
 
-    const validation = await validateKucoinCredentials({
+    const validation = await validateBinanceCredentials({
       apiKey: parsed.data.apiKey,
       apiSecret: parsed.data.apiSecret,
-      passphrase: parsed.data.passphrase,
     });
 
     if (!validation.valid) {
-      return res.status(400).json({ message: `Invalid KuCoin credentials: ${validation.error}` });
+      return res.status(400).json({ message: `Invalid Binance credentials: ${validation.error}` });
     }
 
-    await storage.updateKucoinCredentials(
+    await storage.updateBinanceCredentials(
       req.user!.id,
       parsed.data.apiKey,
-      parsed.data.apiSecret,
-      parsed.data.passphrase
+      parsed.data.apiSecret
     );
     res.json({ success: true });
   });
 
-  app.delete("/api/user/kucoin-keys", async (req, res) => {
+  app.delete("/api/user/binance-keys", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
-    await storage.updateKucoinCredentials(req.user!.id, "", "", "");
+    await storage.updateBinanceCredentials(req.user!.id, "", "");
     await storage.updateTradingMode(req.user!.id, "demo");
     res.json({ success: true });
   });
 
-  app.get("/api/user/kucoin-keys", async (req, res) => {
+  app.get("/api/user/binance-keys", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const user = await storage.getUser(req.user!.id);
     if (!user) return res.sendStatus(404);
     res.json({
-      hasKeys: !!(user.kucoinApiKey && user.kucoinApiSecret && user.kucoinPassphrase),
-      apiKey: user.kucoinApiKey ? `${user.kucoinApiKey.slice(0, 6)}...${user.kucoinApiKey.slice(-4)}` : "",
+      hasKeys: !!(user.binanceApiKey && user.binanceApiSecret),
+      apiKey: user.binanceApiKey ? `${user.binanceApiKey.slice(0, 6)}...${user.binanceApiKey.slice(-4)}` : "",
     });
   });
 
-  app.get("/api/kucoin/balance", async (req, res) => {
+  app.get("/api/binance/balance", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const user = await storage.getUser(req.user!.id);
-    if (!user?.kucoinApiKey || !user?.kucoinApiSecret || !user?.kucoinPassphrase) {
-      return res.status(400).json({ message: "KuCoin API keys not configured" });
+    if (!user?.binanceApiKey || !user?.binanceApiSecret) {
+      return res.status(400).json({ message: "Binance API keys not configured" });
     }
 
-    const result = await getKucoinUsdtBalance({
-      apiKey: user.kucoinApiKey,
-      apiSecret: user.kucoinApiSecret,
-      passphrase: user.kucoinPassphrase,
+    const result = await getBinanceUsdtBalance({
+      apiKey: user.binanceApiKey,
+      apiSecret: user.binanceApiSecret,
     });
 
     if (!result.success) {
@@ -2494,17 +2489,16 @@ export async function registerRoutes(
     res.json({ balance: result.balance });
   });
 
-  app.get("/api/kucoin/balances", async (req, res) => {
+  app.get("/api/binance/balances", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const user = await storage.getUser(req.user!.id);
-    if (!user?.kucoinApiKey || !user?.kucoinApiSecret || !user?.kucoinPassphrase) {
-      return res.status(400).json({ message: "KuCoin API keys not configured" });
+    if (!user?.binanceApiKey || !user?.binanceApiSecret) {
+      return res.status(400).json({ message: "Binance API keys not configured" });
     }
 
-    const result = await getKucoinAllBalances({
-      apiKey: user.kucoinApiKey,
-      apiSecret: user.kucoinApiSecret,
-      passphrase: user.kucoinPassphrase,
+    const result = await getBinanceAllBalances({
+      apiKey: user.binanceApiKey,
+      apiSecret: user.binanceApiSecret,
     });
 
     if (!result.success) {

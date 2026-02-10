@@ -8,7 +8,6 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUserBalance(id: number, balance: number): Promise<void>;
   updateTradingMode(id: number, tradingMode: string): Promise<void>;
-  updateKucoinCredentials(id: number, apiKey: string, apiSecret: string, passphrase: string): Promise<void>;
   updateBinanceCredentials(id: number, apiKey: string, apiSecret: string): Promise<void>;
   getAllUsers(): Promise<User[]>;
 
@@ -102,10 +101,6 @@ export class DatabaseStorage implements IStorage {
 
   async updateTradingMode(id: number, tradingMode: string): Promise<void> {
     await db.update(users).set({ tradingMode }).where(eq(users.id, id));
-  }
-
-  async updateKucoinCredentials(id: number, apiKey: string, apiSecret: string, passphrase: string): Promise<void> {
-    await db.update(users).set({ kucoinApiKey: apiKey, kucoinApiSecret: apiSecret, kucoinPassphrase: passphrase }).where(eq(users.id, id));
   }
 
   async updateBinanceCredentials(id: number, apiKey: string, apiSecret: string): Promise<void> {

@@ -16,16 +16,14 @@ import { useDemoRealMode } from "@/hooks/use-trading-mode";
 export default function SettingsPage() {
   const { user, logoutMutation } = useAuth();
   const { toast } = useToast();
-  const [kucoinApiKey, setKucoinApiKey] = useState("");
-  const [kucoinApiSecret, setKucoinApiSecret] = useState("");
-  const [kucoinPassphrase, setKucoinPassphrase] = useState("");
+  const [binanceApiKey, setBinanceApiKey] = useState("");
+  const [binanceApiSecret, setBinanceApiSecret] = useState("");
   const [showSecret, setShowSecret] = useState(false);
-  const [showPassphrase, setShowPassphrase] = useState(false);
 
-  const { isRealMode, effectiveBalance, hasKucoinKeys, kucoinBalance } = useDemoRealMode();
+  const { isRealMode, effectiveBalance, hasBinanceKeys, binanceBalance } = useDemoRealMode();
 
-  const { data: kucoinKeysData } = useQuery<{ hasKeys: boolean; apiKey: string }>({
-    queryKey: ["/api/user/kucoin-keys"],
+  const { data: binanceKeysData } = useQuery<{ hasKeys: boolean; apiKey: string }>({
+    queryKey: ["/api/user/binance-keys"],
   });
 
   const toggleModeMutation = useMutation({
@@ -35,7 +33,7 @@ export default function SettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/user/trading-mode"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/kucoin/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/binance/balance"] });
       toast({ title: "Trading mode updated" });
     },
     onError: (error: any) => {
@@ -45,19 +43,17 @@ export default function SettingsPage() {
 
   const saveKeysMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("POST", "/api/user/kucoin-keys", {
-        apiKey: kucoinApiKey,
-        apiSecret: kucoinApiSecret,
-        passphrase: kucoinPassphrase,
+      await apiRequest("POST", "/api/user/binance-keys", {
+        apiKey: binanceApiKey,
+        apiSecret: binanceApiSecret,
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user/kucoin-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/binance-keys"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user/trading-mode"] });
-      setKucoinApiKey("");
-      setKucoinApiSecret("");
-      setKucoinPassphrase("");
-      toast({ title: "KuCoin API keys saved and verified" });
+      setBinanceApiKey("");
+      setBinanceApiSecret("");
+      toast({ title: "Binance API keys saved and verified" });
     },
     onError: (error: any) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -66,19 +62,19 @@ export default function SettingsPage() {
 
   const deleteKeysMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest("DELETE", "/api/user/kucoin-keys");
+      await apiRequest("DELETE", "/api/user/binance-keys");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/user/kucoin-keys"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/user/binance-keys"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user/trading-mode"] });
       queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      toast({ title: "KuCoin API keys removed" });
+      toast({ title: "Binance API keys removed" });
     },
   });
 
   if (!user) return <></>;
 
-  const hasKeys = kucoinKeysData?.hasKeys || hasKucoinKeys;
+  const hasKeys = binanceKeysData?.hasKeys || hasBinanceKeys;
 
   return (
     <LayoutShell>
@@ -93,8 +89,8 @@ export default function SettingsPage() {
             <div>
               <div className="text-sm font-semibold text-foreground" data-testid="text-settings-username">{user.username}</div>
               <div className="text-xs text-muted-foreground">
-                {isRealMode && kucoinBalance !== undefined
-                  ? `KuCoin Balance: $${kucoinBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                {isRealMode && binanceBalance !== undefined
+                  ? `Binance Balance: $${binanceBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   : `Demo Balance: $${Number(effectiveBalance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                 }
               </div>
@@ -139,7 +135,7 @@ export default function SettingsPage() {
               <div>
                 <div className="text-sm font-semibold text-foreground">Trading Mode</div>
                 <div className="text-xs text-muted-foreground">
-                  {isRealMode ? "Real Trading (KuCoin)" : "Demo Trading (Simulated)"}
+                  {isRealMode ? "Real Trading (Binance)" : "Demo Trading (Simulated)"}
                 </div>
               </div>
             </div>
@@ -160,7 +156,7 @@ export default function SettingsPage() {
             <div className="rounded-md bg-destructive/10 p-3 flex items-start gap-2">
               <AlertTriangle className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
               <div className="text-xs text-destructive">
-                Real trading mode is active. All trades will be executed on KuCoin with real funds.
+                Real trading mode is active. All trades will be executed on Binance with real funds.
               </div>
             </div>
           )}
@@ -170,7 +166,7 @@ export default function SettingsPage() {
           <div className="flex items-center gap-3">
             <Key className="w-5 h-5 text-muted-foreground" />
             <div>
-              <div className="text-sm font-semibold text-foreground">KuCoin API Keys</div>
+              <div className="text-sm font-semibold text-foreground">Binance API Keys</div>
               <div className="text-xs text-muted-foreground">
                 {hasKeys ? "API keys configured" : "Required for real trading"}
               </div>
@@ -181,12 +177,12 @@ export default function SettingsPage() {
             <div className="rounded-md bg-muted p-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Check className="w-4 h-4 text-green-500" />
-                <span className="text-xs text-foreground">Connected: {kucoinKeysData?.apiKey}</span>
+                <span className="text-xs text-foreground">Connected: {binanceKeysData?.apiKey}</span>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                data-testid="button-remove-kucoin-keys"
+                data-testid="button-remove-binance-keys"
                 onClick={() => deleteKeysMutation.mutate()}
                 disabled={deleteKeysMutation.isPending}
                 className="text-destructive"
@@ -199,25 +195,25 @@ export default function SettingsPage() {
           {!hasKeys && (
             <div className="space-y-3">
               <div className="space-y-1">
-                <Label htmlFor="kucoin-api-key" className="text-xs">API Key</Label>
+                <Label htmlFor="binance-api-key" className="text-xs">API Key</Label>
                 <Input
-                  id="kucoin-api-key"
-                  data-testid="input-kucoin-api-key"
-                  placeholder="Enter your KuCoin API key"
-                  value={kucoinApiKey}
-                  onChange={(e) => setKucoinApiKey(e.target.value)}
+                  id="binance-api-key"
+                  data-testid="input-binance-api-key"
+                  placeholder="Enter your Binance API key"
+                  value={binanceApiKey}
+                  onChange={(e) => setBinanceApiKey(e.target.value)}
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="kucoin-api-secret" className="text-xs">API Secret</Label>
+                <Label htmlFor="binance-api-secret" className="text-xs">API Secret</Label>
                 <div className="relative">
                   <Input
-                    id="kucoin-api-secret"
-                    data-testid="input-kucoin-api-secret"
+                    id="binance-api-secret"
+                    data-testid="input-binance-api-secret"
                     type={showSecret ? "text" : "password"}
-                    placeholder="Enter your KuCoin API secret"
-                    value={kucoinApiSecret}
-                    onChange={(e) => setKucoinApiSecret(e.target.value)}
+                    placeholder="Enter your Binance API secret"
+                    value={binanceApiSecret}
+                    onChange={(e) => setBinanceApiSecret(e.target.value)}
                   />
                   <button
                     type="button"
@@ -228,30 +224,10 @@ export default function SettingsPage() {
                   </button>
                 </div>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="kucoin-passphrase" className="text-xs">Passphrase</Label>
-                <div className="relative">
-                  <Input
-                    id="kucoin-passphrase"
-                    data-testid="input-kucoin-passphrase"
-                    type={showPassphrase ? "text" : "password"}
-                    placeholder="Enter your KuCoin trading passphrase"
-                    value={kucoinPassphrase}
-                    onChange={(e) => setKucoinPassphrase(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground"
-                    onClick={() => setShowPassphrase(!showPassphrase)}
-                  >
-                    {showPassphrase ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
               <Button
-                data-testid="button-save-kucoin-keys"
+                data-testid="button-save-binance-keys"
                 className="w-full"
-                disabled={!kucoinApiKey || !kucoinApiSecret || !kucoinPassphrase || saveKeysMutation.isPending}
+                disabled={!binanceApiKey || !binanceApiSecret || saveKeysMutation.isPending}
                 onClick={() => saveKeysMutation.mutate()}
               >
                 {saveKeysMutation.isPending ? (
@@ -264,21 +240,21 @@ export default function SettingsPage() {
                 )}
               </Button>
               <div className="text-xs text-muted-foreground space-y-1">
-                <p>1. Go to KuCoin &gt; API Management</p>
-                <p>2. Create a new API key with Trade permissions</p>
-                <p>3. Set a passphrase and IP restriction if needed</p>
+                <p>1. Go to Binance &gt; API Management</p>
+                <p>2. Create a new API key with Spot Trading permissions</p>
+                <p>3. Add IP restrictions if needed for security</p>
               </div>
             </div>
           )}
         </Card>
 
-        {isRealMode && kucoinBalance !== undefined && (
+        {isRealMode && binanceBalance !== undefined && (
           <Card className="p-4 space-y-2">
-            <div className="text-sm font-semibold text-foreground">KuCoin Account</div>
+            <div className="text-sm font-semibold text-foreground">Binance Account</div>
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">USDT Available</span>
-              <span className="text-sm font-semibold text-[#0ecb81]" data-testid="text-kucoin-balance">
-                ${kucoinBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              <span className="text-sm font-semibold text-[#0ecb81]" data-testid="text-binance-balance">
+                ${binanceBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
           </Card>

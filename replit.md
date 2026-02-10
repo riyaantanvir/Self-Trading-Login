@@ -37,14 +37,14 @@ The platform is built with a React, Vite, TypeScript, TailwindCSS, and shadcn/ui
 -   **UI/UX:** Binance-style interface with professional TradingView chart styling (dark background #131722, muted grids).
 
 -   **Dual Trading Mode (Demo/Real):**
-    -   Toggle between Demo (simulated with virtual $100k balance) and Real (live trading via KuCoin API) in Settings.
-    -   `useDemoRealMode` hook (`client/src/hooks/use-trading-mode.ts`) provides `effectiveBalance`, `isRealMode`, `hasKucoinKeys`, and `kucoinBalance` across all pages.
+    -   Toggle between Demo (simulated with virtual $100k balance) and Real (live trading via Binance API) in Settings.
+    -   `useDemoRealMode` hook (`client/src/hooks/use-trading-mode.ts`) provides `effectiveBalance`, `isRealMode`, `hasBinanceKeys`, and `binanceBalance` across all pages.
     -   Note: `useTradingMode` in `layout-shell.tsx` is a separate concept for spot/futures mode toggle (localStorage-based).
-    -   KuCoin API integration (`server/kucoin.ts`) supports balance fetching, order placement, and credential validation.
-    -   API routes: `/api/user/trading-mode`, `/api/user/kucoin-keys`, `/api/kucoin/balance`, `/api/kucoin/balances`.
-    -   Real mode requires all 3 KuCoin credentials (API Key, Secret, Passphrase). Passphrase encrypted via HMAC-SHA256.
+    -   Binance trading integration (`server/binance-trade.ts`) supports account info, balance fetching, order placement (market/limit), and credential validation via HMAC-SHA256 signed requests.
+    -   API routes: `/api/user/trading-mode`, `/api/user/binance-keys`, `/api/binance/balance`, `/api/binance/balances`.
+    -   Real mode requires 2 Binance credentials (API Key, Secret). Requests signed with HMAC-SHA256.
     -   Balance display updated across: layout-shell header, assets-page, token-detail TradePanel, futures-trade-panel, pay-page, settings-page.
-    -   Schema fields: `tradingMode`, `kucoinApiKey`, `kucoinApiSecret`, `kucoinPassphrase`, `binanceApiKey`, `binanceApiSecret` (Binance fields reserved for future use).
+    -   Schema fields: `tradingMode`, `binanceApiKey`, `binanceApiSecret`. Legacy KuCoin fields remain in schema but are unused.
 
 ## External Dependencies
 -   Binance Production WebSocket API (`wss://data-stream.binance.vision`) for real-time market data.
