@@ -29,6 +29,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `/history` - Trade history (spot)
 - `/futures-history` - Futures trade history (detailed: entry/exit, fees, funding fees, P&L, net P&L)
 - `/futures-pnl` - Futures PNL analysis page (daily calendar, charts, 7D/30D/90D periods, cumulative PNL)
+- `/pay` - Pay page (Binance Pay-style transfer, search user, enter amount, confirm, history)
 - `/alerts` - Price alerts management (create, view, delete alerts)
 - `/settings` - Settings page (logout, admin panel link for admins)
 - `/admin` - Admin panel (admin-only, user management & balance top-up)
@@ -79,6 +80,9 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `GET /api/futures/trades` - Futures trade history
 - `GET /api/futures/today-pnl` - Futures today's PNL (6AM-6AM window, realized PNL from closed positions, unrealized PNL from open positions)
 - `GET /api/futures/pnl-history` - Futures daily realized PNL history (6AM-6AM window, returns dailyPnl array, cumulativePnl, weeklyPnl)
+- `GET /api/pay/search-users` - Search users by username (params: q)
+- `POST /api/pay/transfer` - Create transfer (body: { receiverId, amount, note })
+- `GET /api/pay/history` - Transfer history (sent and received, with usernames)
 - `POST /api/admin/futures-topup` - Admin top-up futures wallet
 - `GET /api/admin/api-keys` - Get all API keys (masked, admin-only)
 - `POST /api/admin/api-keys` - Save/update API key (body: { keyName, apiKey, apiSecret }, admin-only)
@@ -113,6 +117,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Futures tab on Assets page shows wallet balance, unrealized PnL, margin in use, open positions
 
 ## Recent Changes
+- Feb 2026: Added Pay feature (Binance Pay-style) - search users by username, enter amount, confirm transfer, transfer history with sent/received tracking; DB transfers table, /pay route, navigation item
 - Feb 2026: Added Futures PNL Analysis page (/futures-pnl) with daily calendar view, cumulative PNL chart, profits chart, 7D/30D/90D period tabs; Today's PNL on Futures tab clickable to navigate to futures PNL page
 - Feb 2026: Added Futures Trading mode - full Binance-style futures with leverage (1x-125x), long/short positions, cross/isolated margin, separate futures wallet, Spot/Futures toggle on trading page, Futures tab on Assets page
 - Feb 2026: Added API Key Management in Admin Panel - admin can save/update Binance Spot and Futures API keys; keys stored in DB (api_keys table), masked display, show/hide toggle

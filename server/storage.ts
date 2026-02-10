@@ -1,6 +1,6 @@
-import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, apiKeys, futuresWallet, futuresPositions, futuresTrades, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin, type ApiKey, type FuturesWallet, type FuturesPosition, type FuturesTrade } from "@shared/schema";
+import { users, trades, portfolio, watchlist, priceAlerts, trackedCoins, apiKeys, futuresWallet, futuresPositions, futuresTrades, transfers, type User, type InsertUser, type Trade, type InsertTrade, type Portfolio, type Watchlist, type PriceAlert, type TrackedCoin, type ApiKey, type FuturesWallet, type FuturesPosition, type FuturesTrade, type Transfer } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gte, lt } from "drizzle-orm";
+import { eq, and, gte, lt, or, ilike } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
@@ -51,6 +51,10 @@ export interface IStorage {
 
   getFuturesTrades(userId: number): Promise<FuturesTrade[]>;
   createFuturesTrade(data: { userId: number; symbol: string; side: string; action: string; quantity: number; price: number; leverage: number; marginMode: string; realizedPnl: number; fee: number }): Promise<FuturesTrade>;
+
+  searchUsers(query: string, currentUserId: number): Promise<{ id: number; username: string }[]>;
+  createTransfer(senderId: number, receiverId: number, amount: number, note: string): Promise<Transfer>;
+  getTransfers(userId: number): Promise<Transfer[]>;
 
   getPriceAlerts(userId: number): Promise<PriceAlert[]>;
   getActivePriceAlerts(): Promise<PriceAlert[]>;
@@ -322,6 +326,46 @@ export class DatabaseStorage implements IStorage {
   async createFuturesTrade(data: { userId: number; symbol: string; side: string; action: string; quantity: number; price: number; leverage: number; marginMode: string; realizedPnl: number; fee: number }): Promise<FuturesTrade> {
     const [trade] = await db.insert(futuresTrades).values(data).returning();
     return trade;
+  }
+
+  async searchUsers(query: string, currentUserId: number): Promise<{ id: number; username: string }[]> {
+    const results = await db.select({ id: users.id, username: users.username })
+      .from(users)
+      .where(ilike(users.username, `%${query}%`));
+    return results.filter(u => u.id !== currentUserId);
+  }
+
+  async createTransfer(senderId: number, receiverId: number, amount: number, note: string): Promise<Transfer> {
+    return await db.transaction(async (tx) => {
+      const [sender] = await tx.select().from(users).where(eq(users.id, senderId));
+      if (!sender || sender.balance < amount) {
+        throw new Error("Insufficient balance");
+      }
+
+      const [receiver] = await tx.select().from(users).where(eq(users.id, receiverId));
+      if (!receiver) {
+        throw new Error("Recipient not found");
+      }
+
+      await tx.update(users).set({ balance: sender.balance - amount }).where(eq(users.id, senderId));
+      await tx.update(users).set({ balance: receiver.balance + amount }).where(eq(users.id, receiverId));
+
+      const [transfer] = await tx.insert(transfers).values({
+        senderId,
+        receiverId,
+        amount,
+        note: note || "",
+        status: "completed",
+      }).returning();
+
+      return transfer;
+    });
+  }
+
+  async getTransfers(userId: number): Promise<Transfer[]> {
+    return await db.select().from(transfers).where(
+      or(eq(transfers.senderId, userId), eq(transfers.receiverId, userId))
+    );
   }
 }
 

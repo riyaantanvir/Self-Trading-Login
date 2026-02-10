@@ -18,6 +18,7 @@ import PnlPage from "@/pages/pnl-page";
 import SettingsPage from "@/pages/settings-page";
 import FuturesHistoryPage from "@/pages/futures-history-page";
 import FuturesPnlPage from "@/pages/futures-pnl-page";
+import PayPage from "@/pages/pay-page";
 
 function Router() {
   return (
@@ -32,6 +33,7 @@ function Router() {
       <ProtectedRoute path="/futures-pnl" component={FuturesPnlPage} />
       <ProtectedRoute path="/alerts" component={AlertsPage} />
       <ProtectedRoute path="/pnl" component={PnlPage} />
+      <ProtectedRoute path="/pay" component={PayPage} />
       <ProtectedRoute path="/settings" component={SettingsPage} />
       <ProtectedRoute path="/admin" component={AdminPanel} />
       <Route component={NotFound} />

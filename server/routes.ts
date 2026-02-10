@@ -2744,6 +2744,85 @@ export async function registerRoutes(
     }
   });
 
+  // Pay: Search users by username
+  app.get("/api/pay/search-users", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    const query = (req.query.q as string || "").trim();
+    if (!query || query.length < 1) return res.json([]);
+    try {
+      const results = await storage.searchUsers(query, user.id);
+      res.json(results);
+    } catch (e) {
+      res.status(500).json({ message: "Search failed" });
+    }
+  });
+
+  // Pay: Create transfer (atomic transaction in storage)
+  app.post("/api/pay/transfer", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const sender = req.user as any;
+    try {
+      const { receiverId, amount, note } = z.object({
+        receiverId: z.number().int(),
+        amount: z.number().positive().min(0.01),
+        note: z.string().max(200).optional().default(""),
+      }).parse(req.body);
+
+      if (receiverId === sender.id) {
+        return res.status(400).json({ message: "Cannot transfer to yourself" });
+      }
+
+      const transfer = await storage.createTransfer(sender.id, receiverId, amount, note);
+
+      const updatedSender = await storage.getUser(sender.id);
+      const receiver = await storage.getUser(receiverId);
+
+      res.json({
+        ...transfer,
+        senderUsername: updatedSender?.username || sender.username,
+        receiverUsername: receiver?.username || "Unknown",
+        newBalance: updatedSender?.balance ?? 0,
+      });
+    } catch (e: any) {
+      if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
+      if (e.message === "Insufficient balance") return res.status(400).json({ message: e.message });
+      if (e.message === "Recipient not found") return res.status(404).json({ message: e.message });
+      console.error("Transfer error:", e);
+      res.status(500).json({ message: "Transfer failed" });
+    }
+  });
+
+  // Pay: Get transfer history
+  app.get("/api/pay/history", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    try {
+      const transferList = await storage.getTransfers(user.id);
+      const allUsers = await storage.getAllUsers();
+      const userMap: Record<number, string> = {};
+      allUsers.forEach(u => { userMap[u.id] = u.username; });
+
+      const enriched = transferList.map(t => ({
+        ...t,
+        senderUsername: userMap[t.senderId] || "Unknown",
+        receiverUsername: userMap[t.receiverId] || "Unknown",
+        direction: t.senderId === user.id ? "sent" : "received",
+      }));
+
+      enriched.sort((a, b) => {
+        const ta = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+        const tb = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+        return tb - ta;
+      });
+
+      res.json(enriched);
+    } catch (e) {
+      console.error("Transfer history error:", e);
+      res.status(500).json({ message: "Failed to fetch transfer history" });
+    }
+  });
+
   // Admin: top up futures wallet
   app.post("/api/admin/futures-topup", async (req, res) => {
     if (!req.isAuthenticated()) return res.sendStatus(401);

@@ -151,3 +151,17 @@ export type InsertWatchlist = z.infer<typeof insertWatchlistSchema>;
 export const insertPriceAlertSchema = createInsertSchema(priceAlerts).omit({ id: true, userId: true, createdAt: true, triggeredAt: true });
 export type PriceAlert = typeof priceAlerts.$inferSelect;
 export type InsertPriceAlert = z.infer<typeof insertPriceAlertSchema>;
+
+export const transfers = pgTable("transfers", {
+  id: serial("id").primaryKey(),
+  senderId: integer("sender_id").notNull(),
+  receiverId: integer("receiver_id").notNull(),
+  amount: doublePrecision("amount").notNull(),
+  note: text("note").default(""),
+  status: text("status").default("completed").notNull(),
+  timestamp: timestamp("timestamp").defaultNow(),
+});
+
+export const insertTransferSchema = createInsertSchema(transfers).omit({ id: true, timestamp: true });
+export type Transfer = typeof transfers.$inferSelect;
+export type InsertTransfer = z.infer<typeof insertTransferSchema>;

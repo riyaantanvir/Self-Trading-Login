@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { BarChart3, Wallet, History, TrendingUp, Briefcase, Bell, Settings } from "lucide-react";
+import { BarChart3, Wallet, History, TrendingUp, Briefcase, Bell, Settings, Send } from "lucide-react";
 
 function useTradingMode() {
   const [mode, setMode] = useState<"spot" | "futures">(() => {
@@ -42,6 +42,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const navItems = [
     { label: "Market", icon: BarChart3, href: "/" },
     { label: "Assets", icon: Briefcase, href: "/assets" },
+    { label: "Pay", icon: Send, href: "/pay" },
     { label: "Portfolio", icon: Wallet, href: "/portfolio" },
     { label: "History", icon: History, href: "/history" },
     { label: "Alerts", icon: Bell, href: "/alerts" },
