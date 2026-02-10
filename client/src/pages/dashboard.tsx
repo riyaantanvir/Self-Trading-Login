@@ -13,7 +13,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Loader2, Search, ArrowUpDown, Wifi, WifiOff, MoreVertical, Star, Eye, Gauge, Newspaper, ExternalLink, Clock, TrendingUp, TrendingDown, Activity, BarChart3, Zap, ArrowUp, ArrowDown, Minus, Layers, Target, Shield, Flame, Scale } from "lucide-react";
+import { Loader2, Search, ArrowUpDown, Wifi, WifiOff, MoreVertical, Star, Eye, Gauge, Newspaper, ExternalLink, Clock, TrendingUp, TrendingDown, Activity, BarChart3, Zap, ArrowUp, ArrowDown, Minus, Layers, Target, Shield, Flame, Scale, Crosshair } from "lucide-react";
+import { TradeSignalsTab } from "@/components/trade-signals-tab";
 import { useQuery } from "@tanstack/react-query";
 
 interface Ticker {
@@ -1155,7 +1156,7 @@ export default function Dashboard() {
   const [search, setSearch] = useState("");
   const [sortField, setSortField] = useState<"symbol" | "lastPrice" | "priceChangePercent" | "quoteVolume">("quoteVolume");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [activeTab, setActiveTab] = useState<"all" | "watchlist" | "feargreed" | "news" | "mmt">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "watchlist" | "feargreed" | "news" | "mmt" | "signals">("all");
   const [, navigate] = useLocation();
 
   const watchlistSymbols = useMemo(() => {
@@ -1262,12 +1263,13 @@ export default function Dashboard() {
             { key: "feargreed" as const, label: "F&G", icon: Gauge },
             { key: "news" as const, label: "News", icon: Newspaper },
             { key: "mmt" as const, label: "MMT", icon: Activity },
+            { key: "signals" as const, label: "Signals", icon: Crosshair },
           ].map((tab) => (
             <Button
               key={tab.key}
               variant={activeTab === tab.key ? "secondary" : "ghost"}
               size="sm"
-              className={`text-xs gap-1 whitespace-nowrap toggle-elevate ${activeTab === tab.key ? "toggle-elevated" : ""}`}
+              className="text-xs gap-1 whitespace-nowrap"
               onClick={() => setActiveTab(tab.key)}
               data-testid={`button-tab-${tab.key}`}
             >
@@ -1282,7 +1284,9 @@ export default function Dashboard() {
           ))}
         </div>
 
-        {activeTab === "mmt" ? (
+        {activeTab === "signals" ? (
+          <TradeSignalsTab tickers={tickers as Ticker[] || []} />
+        ) : activeTab === "mmt" ? (
           <MMTAnalyticsTab tickers={tickers as Ticker[] || []} />
         ) : activeTab === "feargreed" ? (
           <FearGreedTab />

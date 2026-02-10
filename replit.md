@@ -53,6 +53,10 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `POST /api/alerts` - Create alert (body: { symbol, targetPrice, direction, notifyTelegram, alertType?, indicator?, indicatorCondition?, chartInterval? })
 - `DELETE /api/alerts/:id` - Delete price alert
 - `GET /api/alerts/triggered` - User's triggered alerts
+- `GET /api/market/scanner` - Technical scanner for all coins (RSI, EMA, MACD, volume, signals, cached 30s)
+- `GET /api/market/support-resistance/:symbol` - Support & resistance levels from swing highs/lows (200 candles, 1H)
+- `GET /api/market/correlation` - Pearson correlation matrix for top 10 coins (72H returns, cached 2min)
+- `GET /api/market/whale-watch` - Batch order book depth for top 8 coins (bid/ask walls, cached 15s)
 - `POST /api/user/telegram` - Save Telegram bot token and chat ID
 - `POST /api/user/telegram/test` - Send test Telegram message
 
@@ -75,6 +79,7 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - Cancel returns reserved balance (buy) or holdings (sell)
 
 ## Recent Changes
+- Feb 2026: Added Trade Signals tab with 6 sub-sections: Scanner (RSI/volume/trend filter), Support & Resistance (swing high/low levels), Buy/Sell Signals (combined indicator cards), Correlation Map (72H price correlation heatmap), Whale Watch (batch order book walls), Market Pulse (breadth, sentiment, F&G summary)
 - Feb 2026: MMT tab now has sub-navigation with 7 separate sections: Overview, Heatmap, Volume, Trends, Order Book, Liquidation, Sentiment (each in its own view)
 - Feb 2026: Enhanced MMT Analytics with order book depth/liquidity heatmap (bid/ask walls), liquidation map (estimated levels by leverage 2x-100x), net long/short sentiment (derived from order book pressure)
 - Feb 2026: Added MMT Analytics tab on Markets page (market overview cards, top gainers/losers, market heatmap, volume leaders, volume anomaly detection, trend meter with EMA 9/21/50 signals, all real-time from Binance data)

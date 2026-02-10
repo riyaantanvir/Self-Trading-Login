@@ -689,6 +689,302 @@ export async function registerRoutes(
     }
   });
 
+  // --- Trade Signals endpoints ---
+
+  const scannerCache: { data: any; timestamp: number } = { data: null, timestamp: 0 };
+  app.get("/api/market/scanner", async (_req, res) => {
+    try {
+      const now = Date.now();
+      if (scannerCache.data && now - scannerCache.timestamp < 30000) {
+        return res.json(scannerCache.data);
+      }
+
+      const symbols = TRACKED_SYMBOLS.map(s => s.toUpperCase());
+      const results: any[] = [];
+      const batchSize = 5;
+
+      for (let i = 0; i < symbols.length; i += batchSize) {
+        const batch = symbols.slice(i, i + batchSize);
+        const promises = batch.map(async (sym) => {
+          try {
+            const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=1h&limit=50`;
+            const response = await fetch(url);
+            if (!response.ok) return null;
+            const data = await response.json();
+            const closes = (data as any[]).map((k: any) => parseFloat(k[4]));
+            const volumes = (data as any[]).map((k: any) => parseFloat(k[5]));
+            const highs = (data as any[]).map((k: any) => parseFloat(k[2]));
+            const lows = (data as any[]).map((k: any) => parseFloat(k[3]));
+
+            const currentPrice = closes[closes.length - 1];
+            const rsi = computeRSI(closes, 14);
+            const ema9 = computeEMAArray(closes, 9);
+            const ema21 = computeEMAArray(closes, 21);
+            const ema50 = computeEMAArray(closes, 50);
+
+            const macdLine = ema9[ema9.length - 1] - ema21[ema21.length - 1];
+            const prevMacdLine = ema9[ema9.length - 2] - ema21[ema21.length - 2];
+
+            const avgVol = volumes.slice(0, -1).reduce((a: number, b: number) => a + b, 0) / (volumes.length - 1);
+            const currentVol = volumes[volumes.length - 1];
+            const volRatio = avgVol > 0 ? currentVol / avgVol : 1;
+
+            const volatility = highs.slice(-14).reduce((sum: number, h: number, idx: number) => {
+              return sum + ((h - lows.slice(-14)[idx]) / lows.slice(-14)[idx]) * 100;
+            }, 0) / 14;
+
+            const ticker = tickerMap.get(sym);
+            const priceChange24h = ticker ? parseFloat(ticker.priceChangePercent) : 0;
+            const volume24h = ticker ? parseFloat(ticker.quoteVolume) : 0;
+
+            let signal: "strong_buy" | "buy" | "neutral" | "sell" | "strong_sell" = "neutral";
+            let signalScore = 0;
+            if (rsi < 30) signalScore += 2;
+            else if (rsi < 40) signalScore += 1;
+            else if (rsi > 70) signalScore -= 2;
+            else if (rsi > 60) signalScore -= 1;
+            if (ema9[ema9.length - 1] > ema21[ema21.length - 1]) signalScore += 1;
+            else signalScore -= 1;
+            if (currentPrice > ema50[ema50.length - 1]) signalScore += 1;
+            else signalScore -= 1;
+            if (macdLine > 0 && prevMacdLine <= 0) signalScore += 1;
+            if (macdLine < 0 && prevMacdLine >= 0) signalScore -= 1;
+            if (volRatio > 2) signalScore += (macdLine > 0 ? 1 : -1);
+
+            if (signalScore >= 3) signal = "strong_buy";
+            else if (signalScore >= 1) signal = "buy";
+            else if (signalScore <= -3) signal = "strong_sell";
+            else if (signalScore <= -1) signal = "sell";
+
+            return {
+              symbol: sym,
+              price: currentPrice,
+              priceChange24h,
+              volume24h,
+              rsi: +rsi.toFixed(2),
+              ema9: +ema9[ema9.length - 1].toFixed(6),
+              ema21: +ema21[ema21.length - 1].toFixed(6),
+              ema50: +ema50[ema50.length - 1].toFixed(6),
+              macdLine: +macdLine.toFixed(6),
+              volRatio: +volRatio.toFixed(2),
+              volatility: +volatility.toFixed(2),
+              signal,
+              signalScore,
+              flags: {
+                oversold: rsi < 30,
+                overbought: rsi > 70,
+                volumeSpike: volRatio > 2,
+                emaCrossUp: ema9[ema9.length - 1] > ema21[ema21.length - 1] && ema9[ema9.length - 2] <= ema21[ema21.length - 2],
+                emaCrossDown: ema9[ema9.length - 1] < ema21[ema21.length - 1] && ema9[ema9.length - 2] >= ema21[ema21.length - 2],
+              },
+            };
+          } catch { return null; }
+        });
+        const batchResults = await Promise.all(promises);
+        results.push(...batchResults.filter(Boolean));
+      }
+
+      scannerCache.data = results;
+      scannerCache.timestamp = now;
+      res.json(results);
+    } catch (err) {
+      console.error("Scanner error:", err);
+      res.status(500).json({ message: "Failed to run scanner" });
+    }
+  });
+
+  app.get("/api/market/support-resistance/:symbol", async (req, res) => {
+    try {
+      const symbol = req.params.symbol.toUpperCase();
+      const url = `https://data-api.binance.vision/api/v3/klines?symbol=${symbol}&interval=1h&limit=200`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch klines");
+      const data = await response.json();
+      const candles = (data as any[]).map((k: any) => ({
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+        volume: parseFloat(k[5]),
+      }));
+
+      const currentPrice = candles[candles.length - 1].close;
+      const levels: { price: number; strength: number; type: "support" | "resistance"; touches: number }[] = [];
+      const tolerance = currentPrice * 0.005;
+
+      for (let i = 2; i < candles.length - 2; i++) {
+        const c = candles[i];
+        const isSwingHigh = c.high > candles[i - 1].high && c.high > candles[i - 2].high &&
+                            c.high > candles[i + 1].high && c.high > candles[i + 2].high;
+        const isSwingLow = c.low < candles[i - 1].low && c.low < candles[i - 2].low &&
+                           c.low < candles[i + 1].low && c.low < candles[i + 2].low;
+
+        if (isSwingHigh) {
+          const existing = levels.find(l => Math.abs(l.price - c.high) < tolerance);
+          if (existing) { existing.touches++; existing.strength += c.volume; }
+          else levels.push({ price: +c.high.toFixed(8), strength: c.volume, type: c.high > currentPrice ? "resistance" : "support", touches: 1 });
+        }
+        if (isSwingLow) {
+          const existing = levels.find(l => Math.abs(l.price - c.low) < tolerance);
+          if (existing) { existing.touches++; existing.strength += c.volume; }
+          else levels.push({ price: +c.low.toFixed(8), strength: c.volume, type: c.low > currentPrice ? "resistance" : "support", touches: 1 });
+        }
+      }
+
+      levels.sort((a, b) => b.touches * b.strength - a.touches * a.strength);
+      const supports = levels.filter(l => l.type === "support").slice(0, 5);
+      const resistances = levels.filter(l => l.type === "resistance").slice(0, 5);
+      const maxStrength = Math.max(...levels.map(l => l.touches * l.strength), 1);
+
+      res.json({
+        symbol,
+        currentPrice,
+        supports: supports.map(l => ({ ...l, strengthPct: +((l.touches * l.strength / maxStrength) * 100).toFixed(1) })),
+        resistances: resistances.map(l => ({ ...l, strengthPct: +((l.touches * l.strength / maxStrength) * 100).toFixed(1) })),
+      });
+    } catch (err) {
+      console.error("S/R error:", err);
+      res.status(500).json({ message: "Failed to compute support/resistance" });
+    }
+  });
+
+  const correlationCache: { data: any; timestamp: number } = { data: null, timestamp: 0 };
+  app.get("/api/market/correlation", async (_req, res) => {
+    try {
+      const now = Date.now();
+      if (correlationCache.data && now - correlationCache.timestamp < 120000) {
+        return res.json(correlationCache.data);
+      }
+
+      const topSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", "LINKUSDT", "DOTUSDT"];
+      const priceData: { [sym: string]: number[] } = {};
+
+      const batchSize = 5;
+      for (let i = 0; i < topSymbols.length; i += batchSize) {
+        const batch = topSymbols.slice(i, i + batchSize);
+        const promises = batch.map(async (sym) => {
+          const url = `https://data-api.binance.vision/api/v3/klines?symbol=${sym}&interval=1h&limit=72`;
+          const response = await fetch(url);
+          if (!response.ok) return null;
+          const data = await response.json();
+          const closes = (data as any[]).map((k: any) => parseFloat(k[4]));
+          const returns: number[] = [];
+          for (let j = 1; j < closes.length; j++) {
+            returns.push((closes[j] - closes[j - 1]) / closes[j - 1]);
+          }
+          return { sym, returns };
+        });
+        const batchResults = await Promise.all(promises);
+        batchResults.forEach(r => { if (r) priceData[r.sym] = r.returns; });
+      }
+
+      const symbols = Object.keys(priceData);
+      const matrix: { sym1: string; sym2: string; correlation: number }[] = [];
+
+      for (let i = 0; i < symbols.length; i++) {
+        for (let j = i; j < symbols.length; j++) {
+          const r1 = priceData[symbols[i]];
+          const r2 = priceData[symbols[j]];
+          const len = Math.min(r1.length, r2.length);
+          const mean1 = r1.slice(0, len).reduce((a, b) => a + b, 0) / len;
+          const mean2 = r2.slice(0, len).reduce((a, b) => a + b, 0) / len;
+          let cov = 0, var1 = 0, var2 = 0;
+          for (let k = 0; k < len; k++) {
+            const d1 = r1[k] - mean1;
+            const d2 = r2[k] - mean2;
+            cov += d1 * d2;
+            var1 += d1 * d1;
+            var2 += d2 * d2;
+          }
+          const corr = (var1 > 0 && var2 > 0) ? cov / Math.sqrt(var1 * var2) : (i === j ? 1 : 0);
+          matrix.push({ sym1: symbols[i], sym2: symbols[j], correlation: +corr.toFixed(4) });
+        }
+      }
+
+      const result = { symbols, matrix };
+      correlationCache.data = result;
+      correlationCache.timestamp = now;
+      res.json(result);
+    } catch (err) {
+      console.error("Correlation error:", err);
+      res.status(500).json({ message: "Failed to compute correlations" });
+    }
+  });
+
+  const whaleCache: { data: any; timestamp: number } = { data: null, timestamp: 0 };
+  app.get("/api/market/whale-watch", async (_req, res) => {
+    try {
+      const now = Date.now();
+      if (whaleCache.data && now - whaleCache.timestamp < 15000) {
+        return res.json(whaleCache.data);
+      }
+
+      const topSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "XRPUSDT", "BNBUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT"];
+      const results: any[] = [];
+
+      const promises = topSymbols.map(async (sym) => {
+        try {
+          const url = `https://data-api.binance.vision/api/v3/depth?symbol=${sym}&limit=100`;
+          const response = await fetch(url);
+          if (!response.ok) return null;
+          const raw = await response.json() as { bids: string[][]; asks: string[][] };
+
+          const bids = raw.bids.map(([p, q]: string[]) => ({ price: parseFloat(p), quantity: parseFloat(q) }));
+          const asks = raw.asks.map(([p, q]: string[]) => ({ price: parseFloat(p), quantity: parseFloat(q) }));
+
+          const totalBid = bids.reduce((s: number, b: any) => s + b.price * b.quantity, 0);
+          const totalAsk = asks.reduce((s: number, a: any) => s + a.price * a.quantity, 0);
+
+          const sortedBids = [...bids].sort((a: any, b: any) => b.quantity - a.quantity);
+          const sortedAsks = [...asks].sort((a: any, b: any) => b.quantity - a.quantity);
+
+          return {
+            symbol: sym,
+            totalBidDepth: totalBid,
+            totalAskDepth: totalAsk,
+            ratio: totalAsk > 0 ? totalBid / totalAsk : 1,
+            biggestBidWall: sortedBids[0] || null,
+            biggestAskWall: sortedAsks[0] || null,
+          };
+        } catch { return null; }
+      });
+
+      const batchResults = await Promise.all(promises);
+      batchResults.forEach(r => { if (r) results.push(r); });
+
+      whaleCache.data = results;
+      whaleCache.timestamp = now;
+      res.json(results);
+    } catch (err) {
+      console.error("Whale watch error:", err);
+      res.status(500).json({ message: "Failed to fetch whale data" });
+    }
+  });
+
+  function computeRSI(closes: number[], period: number): number {
+    if (closes.length < period + 1) return 50;
+    let gains = 0, losses = 0;
+    for (let i = closes.length - period; i < closes.length; i++) {
+      const diff = closes[i] - closes[i - 1];
+      if (diff > 0) gains += diff;
+      else losses -= diff;
+    }
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return +(100 - 100 / (1 + rs)).toFixed(2);
+  }
+
+  function computeEMAArray(data: number[], period: number): number[] {
+    if (data.length === 0) return [];
+    const k = 2 / (period + 1);
+    const result = [data[0]];
+    for (let i = 1; i < data.length; i++) {
+      result.push(data[i] * k + result[i - 1] * (1 - k));
+    }
+    return result;
+  }
+
   function computeEMA(data: number[], period: number): number {
     if (data.length === 0) return 0;
     const k = 2 / (period + 1);
