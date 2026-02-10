@@ -815,7 +815,7 @@ async function setupKrakenLiveStream(httpServer: Server) {
   wss.on("connection", (ws) => {
     clients.add(ws);
 
-    ws.send(JSON.stringify({ type: "status", connected: binanceConnected }));
+    ws.send(JSON.stringify({ type: "status", connected: krakenConnected }));
 
     if (tickerMap.size > 0) {
       ws.send(JSON.stringify({ type: "tickers", data: Array.from(tickerMap.values()) }));
