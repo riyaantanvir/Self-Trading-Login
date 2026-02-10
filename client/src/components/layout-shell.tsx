@@ -1,11 +1,41 @@
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { BarChart3, Wallet, History, TrendingUp, Briefcase, Bell, Settings } from "lucide-react";
 
+function useTradingMode() {
+  const [mode, setMode] = useState<"spot" | "futures">(() => {
+    try { return (localStorage.getItem("trading_mode") as "spot" | "futures") || "spot"; } catch { return "spot"; }
+  });
+
+  useEffect(() => {
+    const handler = () => {
+      try { setMode((localStorage.getItem("trading_mode") as "spot" | "futures") || "spot"); } catch {}
+    };
+    window.addEventListener("storage", handler);
+    window.addEventListener("trading_mode_changed", handler);
+    return () => {
+      window.removeEventListener("storage", handler);
+      window.removeEventListener("trading_mode_changed", handler);
+    };
+  }, []);
+
+  const toggle = useCallback((newMode: "spot" | "futures") => {
+    setMode(newMode);
+    try {
+      localStorage.setItem("trading_mode", newMode);
+      window.dispatchEvent(new Event("trading_mode_changed"));
+    } catch {}
+  }, []);
+
+  return { mode, toggle };
+}
+
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [location] = useLocation();
+  const { mode: tradingMode, toggle: setTradingMode } = useTradingMode();
 
   if (!user) return <>{children}</>;
 
@@ -28,6 +58,22 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
               <span className="text-base sm:text-lg font-bold text-foreground hidden xs:inline">Self Treding</span>
             </div>
           </Link>
+          <div className="flex items-center gap-0.5 bg-muted rounded-md p-0.5 flex-shrink-0" data-testid="header-trading-mode">
+            <button
+              className={`text-[10px] sm:text-xs font-medium px-2 sm:px-3 py-1 rounded-sm transition-colors ${tradingMode === "spot" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
+              onClick={() => setTradingMode("spot")}
+              data-testid="header-mode-spot"
+            >
+              Spot
+            </button>
+            <button
+              className={`text-[10px] sm:text-xs font-medium px-2 sm:px-3 py-1 rounded-sm transition-colors ${tradingMode === "futures" ? "bg-[#f0b90b] text-black shadow-sm" : "text-muted-foreground"}`}
+              onClick={() => setTradingMode("futures")}
+              data-testid="header-mode-futures"
+            >
+              Futures
+            </button>
+          </div>
           <nav className="hidden md:flex items-center gap-1">
             {navItems.map((item) => (
               <Link key={item.href} href={item.href}>

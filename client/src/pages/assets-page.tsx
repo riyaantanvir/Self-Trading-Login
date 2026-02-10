@@ -537,7 +537,13 @@ function FuturesAssetsContent({
         <Button
           variant="default"
           className="bg-[#f0b90b] text-black font-semibold border-[#f0b90b]"
-          onClick={() => navigate("/")}
+          onClick={() => {
+            try {
+              localStorage.setItem("trading_mode", "futures");
+              window.dispatchEvent(new Event("trading_mode_changed"));
+            } catch {}
+            navigate("/trade/btcusdt");
+          }}
           data-testid="button-futures-trade"
         >
           Trade Futures

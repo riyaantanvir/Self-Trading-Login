@@ -1052,9 +1052,23 @@ export default function TokenDetail() {
   const allPendingOrders = (pendingData as any[] || []);
   const symbolPendingOrders = allPendingOrders.filter((o: any) => o.symbol === symbol);
 
-  const [tradingMode, setTradingMode] = useState<"spot" | "futures">(() => {
+  const [tradingMode, setTradingModeState] = useState<"spot" | "futures">(() => {
     try { return (localStorage.getItem("trading_mode") as "spot" | "futures") || "spot"; } catch { return "spot"; }
   });
+  useEffect(() => {
+    const handler = () => {
+      try { setTradingModeState((localStorage.getItem("trading_mode") as "spot" | "futures") || "spot"); } catch {}
+    };
+    window.addEventListener("trading_mode_changed", handler);
+    return () => window.removeEventListener("trading_mode_changed", handler);
+  }, []);
+  const setTradingMode = (mode: "spot" | "futures") => {
+    setTradingModeState(mode);
+    try {
+      localStorage.setItem("trading_mode", mode);
+      window.dispatchEvent(new Event("trading_mode_changed"));
+    } catch {}
+  };
   const [showBollinger, setShowBollinger] = useState(false);
   const [showRSI, setShowRSI] = useState(false);
   const [showMACD, setShowMACD] = useState(false);
@@ -1101,14 +1115,14 @@ export default function TokenDetail() {
             <div className="flex items-center gap-0.5 bg-muted rounded-md p-0.5 flex-shrink-0" data-testid="toggle-trading-mode">
               <button
                 className={`text-[10px] sm:text-xs font-medium px-2 py-0.5 rounded-sm transition-colors ${tradingMode === "spot" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground"}`}
-                onClick={() => { setTradingMode("spot"); try { localStorage.setItem("trading_mode", "spot"); } catch {} }}
+                onClick={() => setTradingMode("spot")}
                 data-testid="button-mode-spot"
               >
                 Spot
               </button>
               <button
                 className={`text-[10px] sm:text-xs font-medium px-2 py-0.5 rounded-sm transition-colors ${tradingMode === "futures" ? "bg-[#f0b90b] text-black shadow-sm" : "text-muted-foreground"}`}
-                onClick={() => { setTradingMode("futures"); try { localStorage.setItem("trading_mode", "futures"); } catch {} }}
+                onClick={() => setTradingMode("futures")}
                 data-testid="button-mode-futures"
               >
                 Futures
