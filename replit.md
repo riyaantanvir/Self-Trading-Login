@@ -26,7 +26,8 @@ A Binance-style simulated crypto trading platform with real-time market data fro
 - `/assets` - Assets overview (Binance-style, total value, today's PNL clickable, holdings list, Futures tab with positions)
 - `/pnl` - PNL analysis page (daily calendar, charts, 7D/30D/90D periods, cumulative PNL)
 - `/portfolio` - Holdings, P&L, and quick sell
-- `/history` - Trade history
+- `/history` - Trade history (spot)
+- `/futures-history` - Futures trade history (detailed: entry/exit, fees, funding fees, P&L, net P&L)
 - `/alerts` - Price alerts management (create, view, delete alerts)
 - `/settings` - Settings page (logout, admin panel link for admins)
 - `/admin` - Admin panel (admin-only, user management & balance top-up)

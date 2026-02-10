@@ -99,11 +99,9 @@ export default function AssetsPage() {
 
   const { data: futuresWalletData } = useQuery({
     queryKey: ["/api/futures/wallet"],
-    enabled: activeTab === "futures",
   });
   const { data: futuresPositionsData } = useQuery({
     queryKey: ["/api/futures/positions"],
-    enabled: activeTab === "futures",
   });
 
   const futuresBalance = (futuresWalletData as any)?.balance ?? 0;
@@ -163,7 +161,22 @@ export default function AssetsPage() {
     (sum, i) => sum + i.currentValue,
     0
   );
-  const totalEstValue = cashBalance + totalHoldingsValue;
+
+  const futuresUnrealizedPnl = useMemo(() => {
+    const openPositions = futuresPositions.filter((p: any) => p.status === "open");
+    return openPositions.reduce((sum: number, pos: any) => {
+      const ticker = tickerMap[pos.symbol];
+      const currentPrice = ticker ? parseFloat(ticker.lastPrice) : Number(pos.entryPrice);
+      const qty = Number(pos.quantity);
+      const entry = Number(pos.entryPrice);
+      const pnl = pos.side === "long"
+        ? (currentPrice - entry) * qty
+        : (entry - currentPrice) * qty;
+      return sum + pnl;
+    }, 0);
+  }, [futuresPositions, tickerMap]);
+
+  const totalEstValue = cashBalance + totalHoldingsValue + futuresBalance + futuresUnrealizedPnl;
 
   const totalTodayPnl = todayPnlData?.totalPnl ?? 0;
   const startOfDayValue = todayPnlData?.startOfDayValue ?? totalEstValue;
@@ -542,7 +555,11 @@ function FuturesAssetsContent({
               {balanceVisible ? formatAmount(futuresBalance) : "****"} USDT
             </div>
           </div>
-          <div className="rounded-md border border-border bg-card p-3">
+          <div
+            className="rounded-md border border-border bg-card p-3 cursor-pointer hover-elevate"
+            onClick={() => navigate("/futures-history")}
+            data-testid="link-futures-pnl"
+          >
             <div className="text-[10px] text-muted-foreground mb-0.5">Unrealized PnL</div>
             <div className={`font-mono text-sm font-semibold ${unrealizedPnl >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`} data-testid="text-futures-upnl">
               {balanceVisible ? `${unrealizedPnl >= 0 ? "+" : ""}${formatAmount(unrealizedPnl)}` : "****"} USDT
@@ -574,7 +591,7 @@ function FuturesAssetsContent({
         </Button>
         <Button
           variant="outline"
-          onClick={() => navigate("/history")}
+          onClick={() => navigate("/futures-history")}
           data-testid="button-futures-history"
         >
           <ArrowLeftRight className="w-4 h-4 mr-1" />

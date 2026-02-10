@@ -16,6 +16,7 @@ import AdminPanel from "@/pages/admin-panel";
 import AlertsPage from "@/pages/alerts-page";
 import PnlPage from "@/pages/pnl-page";
 import SettingsPage from "@/pages/settings-page";
+import FuturesHistoryPage from "@/pages/futures-history-page";
 
 function Router() {
   return (
@@ -26,6 +27,7 @@ function Router() {
       <ProtectedRoute path="/assets" component={AssetsPage} />
       <ProtectedRoute path="/portfolio" component={PortfolioPage} />
       <ProtectedRoute path="/history" component={HistoryPage} />
+      <ProtectedRoute path="/futures-history" component={FuturesHistoryPage} />
       <ProtectedRoute path="/alerts" component={AlertsPage} />
       <ProtectedRoute path="/pnl" component={PnlPage} />
       <ProtectedRoute path="/settings" component={SettingsPage} />

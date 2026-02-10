@@ -2516,7 +2516,6 @@ export async function registerRoutes(
         liquidationPrice: Math.max(0, liquidationPrice),
       });
 
-      // Record trade
       await storage.createFuturesTrade({
         userId: user.id,
         symbol: sym,
@@ -2528,6 +2527,9 @@ export async function registerRoutes(
         marginMode,
         realizedPnl: 0,
         fee,
+        fundingFee: 0,
+        positionId: position.id,
+        closePrice: null,
       });
 
       res.json({ position, fee, margin, notional });
@@ -2571,12 +2573,17 @@ export async function registerRoutes(
       }
 
       const marginReturned = (closeQty / position.quantity) * position.isolatedMargin;
-      const netReturn = marginReturned + pnl - fee;
-
       let wallet = await storage.getFuturesWallet(user.id);
       if (!wallet) wallet = await storage.createFuturesWallet(user.id, 0);
 
-      await storage.updateFuturesWalletBalance(user.id, wallet.balance + netReturn);
+      const holdDurationMs = position.openedAt ? (Date.now() - new Date(position.openedAt).getTime()) : 0;
+      const fundingIntervals = Math.floor(holdDurationMs / (8 * 60 * 60 * 1000));
+      const fundingRate = 0.0001;
+      const notionalValue = position.entryPrice * closeQty;
+      const fundingFee = fundingIntervals * fundingRate * notionalValue;
+
+      const netReturnFinal = marginReturned + pnl - fee - fundingFee;
+      await storage.updateFuturesWalletBalance(user.id, wallet.balance + netReturnFinal);
 
       if (closeQty >= position.quantity) {
         await storage.closeFuturesPosition(positionId);
@@ -2592,14 +2599,17 @@ export async function registerRoutes(
         side: position.side,
         action: "close",
         quantity: closeQty,
-        price: closePrice,
+        price: position.entryPrice,
         leverage: position.leverage,
         marginMode: position.marginMode,
         realizedPnl: pnl,
         fee,
+        fundingFee,
+        positionId: position.id,
+        closePrice,
       });
 
-      res.json({ pnl, fee, closePrice, closeQty, netReturn });
+      res.json({ pnl, fee, fundingFee, closePrice, closeQty, netReturn: netReturnFinal });
     } catch (e) {
       if (e instanceof z.ZodError) return res.status(400).json({ message: e.errors[0].message });
       console.error("[Futures] Close error:", e);

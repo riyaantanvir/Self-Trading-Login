@@ -116,6 +116,9 @@ export const futuresTrades = pgTable("futures_trades", {
   marginMode: text("margin_mode").notNull().default("cross"),
   realizedPnl: doublePrecision("realized_pnl").default(0).notNull(),
   fee: doublePrecision("fee").default(0).notNull(),
+  fundingFee: doublePrecision("funding_fee").default(0).notNull(),
+  positionId: integer("position_id"),
+  closePrice: doublePrecision("close_price"),
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
