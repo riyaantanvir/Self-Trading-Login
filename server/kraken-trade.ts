@@ -97,6 +97,9 @@ function fromKrakenAsset(asset: string): string {
     "ZEUR": "EUR",
     "USDT": "USDT",
     "USDC": "USDC",
+    "ZCAD": "CAD",
+    "ZGBP": "GBP",
+    "ZJPY": "JPY",
   };
 
   if (KRAKEN_TO_STANDARD[asset]) return KRAKEN_TO_STANDARD[asset];

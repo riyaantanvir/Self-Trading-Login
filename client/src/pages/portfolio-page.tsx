@@ -31,13 +31,13 @@ interface PortfolioItem {
 export default function PortfolioPage() {
   const { data: holdings, isLoading: loadingPortfolio } = usePortfolio();
   const { data: tickers, isLoading: loadingTickers } = useTickers();
-  const { isRealMode, effectiveBalance, krakenBalance } = useDemoRealMode();
+  const { isRealMode, effectiveBalance, krakenBalance, hasKrakenKeys } = useDemoRealMode();
   const createTrade = useCreateTrade();
 
-  const { data: krakenBalancesData } = useQuery<{ balances: { currency: string; available: number; balance: number; wallet: string }[] }>({
+  const { data: krakenBalancesData, isLoading: loadingKrakenBalances } = useQuery<{ balances: { currency: string; available: number; balance: number; wallet: string }[] }>({
     queryKey: ["/api/kraken/balances"],
-    enabled: isRealMode,
-    refetchInterval: 15000,
+    enabled: isRealMode && hasKrakenKeys,
+    refetchInterval: 10000,
   });
   const [sellTarget, setSellTarget] = useState<{
     symbol: string;
@@ -99,7 +99,7 @@ export default function PortfolioPage() {
   const totalValue = isRealMode ? (krakenBalance ?? effectiveBalance) : (portfolioItems.reduce((sum, i) => sum + i.currentValue, 0) + effectiveBalance);
   const totalPnL = portfolioItems.reduce((sum, i) => sum + i.pnl, 0);
 
-  if (loadingPortfolio || loadingTickers) {
+  if (loadingPortfolio || loadingTickers || (isRealMode && loadingKrakenBalances)) {
     return (
       <LayoutShell>
         <div className="flex items-center justify-center h-[60vh]">

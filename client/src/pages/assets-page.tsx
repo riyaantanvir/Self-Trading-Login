@@ -89,7 +89,7 @@ interface PortfolioItem {
 
 export default function AssetsPage() {
   const { user } = useAuth();
-  const { effectiveBalance, isRealMode, krakenBalance } = useDemoRealMode();
+  const { effectiveBalance, isRealMode, krakenBalance, hasKrakenKeys } = useDemoRealMode();
   const { data: holdings, isLoading: loadingPortfolio } = usePortfolio();
   const { data: tickers, isLoading: loadingTickers } = useTickers();
   const { data: todayPnlData } = useTodayPnl();
@@ -99,10 +99,10 @@ export default function AssetsPage() {
   const [, navigate] = useLocation();
   const [activeTab, setActiveTab] = useState<"overview" | "futures">("overview");
 
-  const { data: krakenBalancesData } = useQuery<{ balances: { currency: string; available: number; balance: number; wallet: string }[] }>({
+  const { data: krakenBalancesData, isLoading: loadingKrakenBalances } = useQuery<{ balances: { currency: string; available: number; balance: number; wallet: string }[] }>({
     queryKey: ["/api/kraken/balances"],
-    enabled: isRealMode,
-    refetchInterval: 15000,
+    enabled: isRealMode && hasKrakenKeys,
+    refetchInterval: 10000,
   });
 
   const { data: futuresWalletData } = useQuery({
@@ -233,7 +233,7 @@ export default function AssetsPage() {
       ? (totalTodayPnl / startOfDayValue) * 100
       : 0;
 
-  if (loadingPortfolio || loadingTickers) {
+  if (loadingPortfolio || loadingTickers || (isRealMode && loadingKrakenBalances)) {
     return (
       <LayoutShell>
         <div className="flex items-center justify-center h-[60vh]">
