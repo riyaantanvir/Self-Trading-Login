@@ -91,11 +91,12 @@ async function executeDcaSell(bot: any, step: number, quantity: number, price: n
   if (isRealMode) {
     if (!hasKrakenKeys) throw new Error("Kraken keys not configured for Real mode");
     const creds = { apiKey: user.krakenApiKey!, apiSecret: user.krakenApiSecret! };
+    const sellVolume = parseFloat(quantity.toPrecision(8));
     const krakenOrder = await placeKrakenOrder(creds, {
       symbol: bot.symbol,
       side: "SELL",
       type: "MARKET",
-      quantity: String(quantity),
+      quantity: String(sellVolume),
     });
     if (!krakenOrder.success) {
       throw new Error(`Kraken sell failed: ${krakenOrder.error}`);
@@ -513,13 +514,13 @@ async function setupKrakenLiveStream(httpServer: Server) {
               symbol: bot.symbol,
               side: "BUY",
               type: "MARKET",
-              quantity: String(quantity),
+              quoteOrderQty: capitalForStep.toFixed(2),
             });
             if (!krakenOrder.success) {
               console.error(`[DCA Bot ${bot.id}] Kraken buy failed:`, krakenOrder.error);
               continue;
             }
-            console.log(`[DCA Bot ${bot.id}] Kraken buy executed:`, krakenOrder.txid);
+            console.log(`[DCA Bot ${bot.id}] Kraken buy executed:`, krakenOrder.data?.txid);
           } catch (err) {
             console.error(`[DCA Bot ${bot.id}] Kraken buy error:`, err);
             continue;
@@ -583,17 +584,18 @@ async function setupKrakenLiveStream(httpServer: Server) {
           if (isRealMode) {
             if (!krakenCreds) continue;
             try {
+              const sellVolume = parseFloat(sellQty.toPrecision(8));
               const krakenOrder = await placeKrakenOrder(krakenCreds, {
                 symbol: bot.symbol,
                 side: "SELL",
                 type: "MARKET",
-                quantity: String(sellQty),
+                quantity: String(sellVolume),
               });
               if (!krakenOrder.success) {
                 console.error(`[DCA Bot ${bot.id}] Kraken sell failed:`, krakenOrder.error);
                 continue;
               }
-              console.log(`[DCA Bot ${bot.id}] Kraken sell executed:`, krakenOrder.txid);
+              console.log(`[DCA Bot ${bot.id}] Kraken sell executed:`, krakenOrder.data?.txid);
             } catch (err) {
               console.error(`[DCA Bot ${bot.id}] Kraken sell error:`, err);
               continue;
