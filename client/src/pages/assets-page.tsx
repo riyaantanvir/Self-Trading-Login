@@ -89,7 +89,7 @@ interface PortfolioItem {
 
 export default function AssetsPage() {
   const { user } = useAuth();
-  const { effectiveBalance, isRealMode } = useDemoRealMode();
+  const { effectiveBalance, isRealMode, krakenBalance } = useDemoRealMode();
   const { data: holdings, isLoading: loadingPortfolio } = usePortfolio();
   const { data: tickers, isLoading: loadingTickers } = useTickers();
   const { data: todayPnlData } = useTodayPnl();
@@ -223,7 +223,7 @@ export default function AssetsPage() {
   }, [futuresPositions, tickerMap, isRealMode]);
 
   const totalEstValue = isRealMode 
-    ? (krakenBalance ?? 0) 
+    ? (krakenBalance ?? effectiveBalance) 
     : (cashBalance + totalHoldingsValue + futuresBalance + futuresUnrealizedPnl);
 
   const totalTodayPnl = isRealMode ? 0 : (todayPnlData?.totalPnl ?? 0);
