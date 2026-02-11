@@ -85,17 +85,35 @@ async function executeDcaSell(bot: any, step: number, quantity: number, price: n
   const user = await storage.getUser(bot.userId);
   if (!user) throw new Error("User not found");
 
-  const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
-  if (!portfolioItem || portfolioItem.quantity < quantity) {
-    throw new Error(`Insufficient ${bot.symbol} quantity to sell`);
-  }
+  const isRealMode = user.tradingMode === "real";
+  const hasKrakenKeys = !!(user.krakenApiKey && user.krakenApiSecret);
 
-  await storage.updateUserBalance(bot.userId, user.balance + total);
-  const newQty = portfolioItem.quantity - quantity;
-  if (newQty <= 0.00000001) {
-    await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
+  if (isRealMode) {
+    if (!hasKrakenKeys) throw new Error("Kraken keys not configured for Real mode");
+    const creds = { apiKey: user.krakenApiKey!, apiSecret: user.krakenApiSecret! };
+    const krakenOrder = await placeKrakenOrder(creds, {
+      symbol: bot.symbol,
+      type: "sell",
+      quantity,
+      orderType: "market"
+    });
+    if (!krakenOrder.success) {
+      throw new Error(`Kraken sell failed: ${krakenOrder.error}`);
+    }
   } else {
-    await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
+    // Demo Mode logic
+    const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
+    if (!portfolioItem || portfolioItem.quantity < quantity) {
+      throw new Error(`Insufficient ${bot.symbol} quantity to sell`);
+    }
+
+    await storage.updateUserBalance(bot.userId, user.balance + total);
+    const newQty = portfolioItem.quantity - quantity;
+    if (newQty <= 0.00000001) {
+      await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
+    } else {
+      await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
+    }
   }
 
   const pnl = quantity * (price - avgBuyPrice);
@@ -448,6 +466,13 @@ async function setupKrakenLiveStream(httpServer: Server) {
     try { config = JSON.parse(bot.strategyConfig || "{}"); } catch { return; }
     if (config.strategy !== "dca_spot") return;
 
+    const user = await storage.getUser(bot.userId);
+    if (!user) return;
+
+    const isRealMode = user.tradingMode === "real";
+    const hasKrakenKeys = !!(user.krakenApiKey && user.krakenApiSecret);
+    const krakenCreds = hasKrakenKeys ? { apiKey: user.krakenApiKey!, apiSecret: user.krakenApiSecret! } : null;
+
     const orders = await storage.getDcaBotOrders(bot.id);
     const executedBuys = orders.filter((o: any) => o.type === "buy");
     const executedSells = orders.filter((o: any) => o.type === "sell");
@@ -478,18 +503,40 @@ async function setupKrakenLiveStream(httpServer: Server) {
         const quantity = capitalForStep / currentPrice;
         const total = quantity * currentPrice;
 
-        const user = await storage.getUser(bot.userId);
-        if (!user || user.balance < total) continue;
-
-        await storage.updateUserBalance(bot.userId, user.balance - total);
-
-        const existing = await storage.getPortfolioItem(bot.userId, bot.symbol);
-        if (existing) {
-          const newQty = existing.quantity + quantity;
-          const newAvg = ((existing.avgBuyPrice * existing.quantity) + total) / newQty;
-          await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, newAvg);
+        if (isRealMode) {
+          if (!krakenCreds) {
+            console.error(`[DCA Bot ${bot.id}] Real mode enabled but no Kraken keys for user ${user.id}`);
+            continue;
+          }
+          try {
+            const krakenOrder = await placeKrakenOrder(krakenCreds, {
+              symbol: bot.symbol,
+              type: "buy",
+              quantity,
+              orderType: "market"
+            });
+            if (!krakenOrder.success) {
+              console.error(`[DCA Bot ${bot.id}] Kraken buy failed:`, krakenOrder.error);
+              continue;
+            }
+            console.log(`[DCA Bot ${bot.id}] Kraken buy executed:`, krakenOrder.txid);
+          } catch (err) {
+            console.error(`[DCA Bot ${bot.id}] Kraken buy error:`, err);
+            continue;
+          }
         } else {
-          await storage.upsertPortfolioItem(bot.userId, bot.symbol, quantity, currentPrice);
+          // Demo Mode
+          if (user.balance < total) continue;
+          await storage.updateUserBalance(bot.userId, user.balance - total);
+
+          const existing = await storage.getPortfolioItem(bot.userId, bot.symbol);
+          if (existing) {
+            const newQty = existing.quantity + quantity;
+            const newAvg = ((existing.avgBuyPrice * existing.quantity) + total) / newQty;
+            await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, newAvg);
+          } else {
+            await storage.upsertPortfolioItem(bot.userId, bot.symbol, quantity, currentPrice);
+          }
         }
 
         await storage.createTrade({
@@ -503,7 +550,7 @@ async function setupKrakenLiveStream(httpServer: Server) {
           type: "buy", price: currentPrice, quantity, total,
         });
         await storage.incrementBotTrades(bot.id, 0);
-        console.log(`[DCA Bot ${bot.id}] Auto buy step ${step.step} at $${currentPrice} qty ${quantity.toFixed(6)}`);
+        console.log(`[DCA Bot ${bot.id}] Auto buy step ${step.step} at $${currentPrice} qty ${quantity.toFixed(6)} (${isRealMode ? 'REAL' : 'DEMO'})`);
         break;
       }
     }
@@ -532,18 +579,37 @@ async function setupKrakenLiveStream(httpServer: Server) {
           if (sellQty <= 0.00000001) continue;
 
           const total = sellQty * currentPrice;
-          const user = await storage.getUser(bot.userId);
-          if (!user) continue;
 
-          const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
-          if (!portfolioItem || portfolioItem.quantity < sellQty) continue;
-
-          await storage.updateUserBalance(bot.userId, user.balance + total);
-          const newQty = portfolioItem.quantity - sellQty;
-          if (newQty <= 0.00000001) {
-            await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
+          if (isRealMode) {
+            if (!krakenCreds) continue;
+            try {
+              const krakenOrder = await placeKrakenOrder(krakenCreds, {
+                symbol: bot.symbol,
+                type: "sell",
+                quantity: sellQty,
+                orderType: "market"
+              });
+              if (!krakenOrder.success) {
+                console.error(`[DCA Bot ${bot.id}] Kraken sell failed:`, krakenOrder.error);
+                continue;
+              }
+              console.log(`[DCA Bot ${bot.id}] Kraken sell executed:`, krakenOrder.txid);
+            } catch (err) {
+              console.error(`[DCA Bot ${bot.id}] Kraken sell error:`, err);
+              continue;
+            }
           } else {
-            await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
+            // Demo Mode
+            const portfolioItem = await storage.getPortfolioItem(bot.userId, bot.symbol);
+            if (!portfolioItem || portfolioItem.quantity < sellQty) continue;
+
+            await storage.updateUserBalance(bot.userId, user.balance + total);
+            const newQty = portfolioItem.quantity - sellQty;
+            if (newQty <= 0.00000001) {
+              await storage.upsertPortfolioItem(bot.userId, bot.symbol, 0, 0);
+            } else {
+              await storage.upsertPortfolioItem(bot.userId, bot.symbol, newQty, portfolioItem.avgBuyPrice);
+            }
           }
 
           const pnl = sellQty * (currentPrice - avgPrice);
@@ -559,7 +625,7 @@ async function setupKrakenLiveStream(httpServer: Server) {
             type: "sell", price: currentPrice, quantity: sellQty, total,
           });
           await storage.incrementBotTrades(bot.id, pnl);
-          console.log(`[DCA Bot ${bot.id}] Auto sell step ${step.step} at $${currentPrice} qty ${sellQty.toFixed(6)} pnl $${pnl.toFixed(2)}`);
+          console.log(`[DCA Bot ${bot.id}] Auto sell step ${step.step} at $${currentPrice} qty ${sellQty.toFixed(6)} pnl $${pnl.toFixed(2)} (${isRealMode ? 'REAL' : 'DEMO'})`);
           break;
         }
       }
