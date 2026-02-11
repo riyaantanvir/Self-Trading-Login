@@ -93,9 +93,9 @@ async function executeDcaSell(bot: any, step: number, quantity: number, price: n
     const creds = { apiKey: user.krakenApiKey!, apiSecret: user.krakenApiSecret! };
     const krakenOrder = await placeKrakenOrder(creds, {
       symbol: bot.symbol,
-      type: "sell",
-      quantity,
-      orderType: "market"
+      side: "SELL",
+      type: "MARKET",
+      quantity: String(quantity),
     });
     if (!krakenOrder.success) {
       throw new Error(`Kraken sell failed: ${krakenOrder.error}`);
@@ -511,9 +511,9 @@ async function setupKrakenLiveStream(httpServer: Server) {
           try {
             const krakenOrder = await placeKrakenOrder(krakenCreds, {
               symbol: bot.symbol,
-              type: "buy",
-              quantity,
-              orderType: "market"
+              side: "BUY",
+              type: "MARKET",
+              quantity: String(quantity),
             });
             if (!krakenOrder.success) {
               console.error(`[DCA Bot ${bot.id}] Kraken buy failed:`, krakenOrder.error);
@@ -585,9 +585,9 @@ async function setupKrakenLiveStream(httpServer: Server) {
             try {
               const krakenOrder = await placeKrakenOrder(krakenCreds, {
                 symbol: bot.symbol,
-                type: "sell",
-                quantity: sellQty,
-                orderType: "market"
+                side: "SELL",
+                type: "MARKET",
+                quantity: String(sellQty),
               });
               if (!krakenOrder.success) {
                 console.error(`[DCA Bot ${bot.id}] Kraken sell failed:`, krakenOrder.error);
