@@ -222,7 +222,9 @@ export default function AssetsPage() {
     }, 0);
   }, [futuresPositions, tickerMap, isRealMode]);
 
-  const totalEstValue = isRealMode ? cashBalance : (cashBalance + totalHoldingsValue + futuresBalance + futuresUnrealizedPnl);
+  const totalEstValue = isRealMode 
+    ? (krakenBalance ?? 0) 
+    : (cashBalance + totalHoldingsValue + futuresBalance + futuresUnrealizedPnl);
 
   const totalTodayPnl = isRealMode ? 0 : (todayPnlData?.totalPnl ?? 0);
   const startOfDayValue = isRealMode ? totalEstValue : (todayPnlData?.startOfDayValue ?? totalEstValue);
