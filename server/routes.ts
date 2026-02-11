@@ -2485,9 +2485,15 @@ export async function registerRoutes(
       }
 
       let totalValue = 0;
+      const seenAssets = new Set<string>();
+
       for (const b of balances.balances) {
         const quantity = b.balance;
         if (quantity <= 0) continue;
+
+        // Ensure we only count each unique asset once to prevent doubling
+        if (seenAssets.has(b.currency)) continue;
+        seenAssets.add(b.currency);
 
         if (["USD", "USDT", "USDC", "ZUSD", "EUR"].includes(b.currency)) {
           // Cash balances are already in USD value (roughly)
