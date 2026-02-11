@@ -31,7 +31,7 @@ interface PortfolioItem {
 export default function PortfolioPage() {
   const { data: holdings, isLoading: loadingPortfolio } = usePortfolio();
   const { data: tickers, isLoading: loadingTickers } = useTickers();
-  const { isRealMode, effectiveBalance } = useDemoRealMode();
+  const { isRealMode, effectiveBalance, krakenBalance } = useDemoRealMode();
   const createTrade = useCreateTrade();
 
   const { data: krakenBalancesData } = useQuery<{ balances: { currency: string; available: number; balance: number; wallet: string }[] }>({
@@ -96,7 +96,7 @@ export default function PortfolioPage() {
     });
   }, [isRealMode, krakenHoldings, holdings, tickerMap]);
 
-  const totalValue = portfolioItems.reduce((sum, i) => sum + i.currentValue, 0) + (isRealMode ? effectiveBalance : 0);
+  const totalValue = isRealMode ? (krakenBalance ?? effectiveBalance) : (portfolioItems.reduce((sum, i) => sum + i.currentValue, 0) + effectiveBalance);
   const totalPnL = portfolioItems.reduce((sum, i) => sum + i.pnl, 0);
 
   if (loadingPortfolio || loadingTickers) {
