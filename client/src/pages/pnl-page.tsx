@@ -109,7 +109,7 @@ export default function PnlPage() {
   if (isRealMode) {
     return (
       <LayoutShell>
-        <div className="p-4 md:p-6 max-w-3xl mx-auto">
+        <div className="px-3 py-3 md:p-6 max-w-3xl mx-auto">
           <div className="flex items-center gap-3 mb-6">
             <Button
               size="icon"
@@ -155,8 +155,8 @@ export default function PnlPage() {
 
   return (
     <LayoutShell>
-      <div className="p-4 md:p-6 max-w-3xl mx-auto">
-        <div className="flex items-center gap-3 mb-6">
+      <div className="px-3 py-3 md:p-6 max-w-3xl mx-auto">
+        <div className="flex items-center gap-3 mb-4">
           <Button
             size="icon"
             variant="ghost"

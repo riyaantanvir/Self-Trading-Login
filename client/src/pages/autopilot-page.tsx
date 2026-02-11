@@ -179,7 +179,7 @@ function CreateDcaBotDialog({ open, onOpenChange }: { open: boolean; onOpenChang
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-2xl max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Bot className="w-5 h-5 text-[#0ecb81]" />
@@ -188,7 +188,7 @@ function CreateDcaBotDialog({ open, onOpenChange }: { open: boolean; onOpenChang
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label className="text-xs text-muted-foreground mb-1.5 block">Bot Name</Label>
               <Input
@@ -296,7 +296,7 @@ function CreateDcaBotDialog({ open, onOpenChange }: { open: boolean; onOpenChang
             </Card>
           ) : null}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label className="text-xs text-muted-foreground mb-1.5 block">Order Type</Label>
               <Select value={orderType} onValueChange={setOrderType}>
@@ -334,15 +334,15 @@ function CreateDcaBotDialog({ open, onOpenChange }: { open: boolean; onOpenChang
               </Badge>
             </div>
 
-            <div className="space-y-2">
-              <div className="grid grid-cols-4 gap-2 text-[10px] text-muted-foreground uppercase tracking-wide px-1">
+            <div className="space-y-2 overflow-x-auto hide-scrollbar">
+              <div className="grid grid-cols-4 gap-2 text-[10px] text-muted-foreground uppercase tracking-wide px-1 min-w-[320px]">
                 <span>Step</span>
                 <span>Price Drop %</span>
                 <span>Buy % Capital</span>
                 <span>Amount</span>
               </div>
               {buySteps.map((step, i) => (
-                <div key={i} className="grid grid-cols-4 gap-2 items-center" data-testid={`buy-step-${i}`}>
+                <div key={i} className="grid grid-cols-4 gap-2 items-center min-w-[320px]" data-testid={`buy-step-${i}`}>
                   <div className="flex items-center gap-1">
                     <Badge variant="secondary" className="text-[10px]">Buy {step.step}</Badge>
                     {i === 0 && <span className="text-[9px] text-muted-foreground">(first)</span>}
@@ -388,15 +388,15 @@ function CreateDcaBotDialog({ open, onOpenChange }: { open: boolean; onOpenChang
               Sell Steps (Profit Taking)
             </span>
 
-            <div className="space-y-2">
-              <div className="grid grid-cols-4 gap-2 text-[10px] text-muted-foreground uppercase tracking-wide px-1">
+            <div className="space-y-2 overflow-x-auto hide-scrollbar">
+              <div className="grid grid-cols-4 gap-2 text-[10px] text-muted-foreground uppercase tracking-wide px-1 min-w-[320px]">
                 <span>Step</span>
                 <span>Rise % (avg)</span>
                 <span>Sell % Position</span>
                 <span>Target</span>
               </div>
               {sellSteps.map((step, i) => (
-                <div key={i} className="grid grid-cols-4 gap-2 items-center" data-testid={`sell-step-${i}`}>
+                <div key={i} className="grid grid-cols-4 gap-2 items-center min-w-[320px]" data-testid={`sell-step-${i}`}>
                   <Badge variant="secondary" className="text-[10px]">
                     {step.sellRemaining ? "Sell All" : `Sell ${step.step}`}
                   </Badge>
@@ -461,7 +461,7 @@ function CreateDcaBotDialog({ open, onOpenChange }: { open: boolean; onOpenChang
           {currentPrice > 0 && capital > 0 && (
             <Card className="p-3 space-y-2 bg-muted/30">
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Calculation Summary</span>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs">
                 <div className="text-muted-foreground">Total Capital</div>
                 <div className="font-mono text-right">${capital.toLocaleString()}</div>
                 <div className="text-muted-foreground">Current Price</div>
@@ -749,7 +749,7 @@ function DcaBotDashboard({ bot, onBack }: { bot: AutopilotBot; onBack: () => voi
         </Card>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card className="p-3">
           <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Total Invested</div>
           <div className="text-sm font-mono font-semibold mt-0.5">${totalCost.toFixed(2)}</div>
@@ -1148,7 +1148,7 @@ export default function AutopilotPage() {
   if (selectedBot) {
     return (
       <LayoutShell>
-        <div className="max-w-4xl mx-auto p-4">
+        <div className="max-w-4xl mx-auto px-3 py-3 md:p-6">
           <DcaBotDashboard bot={selectedBot} onBack={() => setSelectedBot(null)} />
         </div>
       </LayoutShell>
@@ -1157,10 +1157,10 @@ export default function AutopilotPage() {
 
   return (
     <LayoutShell>
-      <div className="max-w-4xl mx-auto p-4 space-y-4">
+      <div className="max-w-4xl mx-auto px-3 py-3 md:p-6 space-y-4">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold flex items-center gap-2" data-testid="text-autopilot-title">
+            <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2" data-testid="text-autopilot-title">
               <Zap className="w-5 h-5 text-[#f0b90b]" />
               Autopilot
             </h1>
@@ -1176,7 +1176,7 @@ export default function AutopilotPage() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Card className="p-3">
             <div className="text-[10px] text-muted-foreground uppercase tracking-wide">Active Bots</div>
             <div className="text-lg font-bold mt-0.5 flex items-center gap-2" data-testid="text-active-bots">

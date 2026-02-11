@@ -1177,7 +1177,7 @@ export default function TokenDetail() {
             </div>
           </div>
 
-          <div className="hidden md:flex items-center gap-4 ml-11 text-xs mt-0.5">
+          <div className="flex items-center gap-3 md:gap-4 ml-11 text-[10px] md:text-xs mt-0.5 overflow-x-auto hide-scrollbar">
             <div>
               <span className="text-muted-foreground">H </span>
               <span className="font-mono text-foreground" data-testid="text-high">${formatPrice(high)}</span>
@@ -1203,7 +1203,7 @@ export default function TokenDetail() {
           </div>
 
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1 border-b border-border overflow-x-auto">
+            <div className="flex items-center gap-0.5 sm:gap-1 px-2 sm:px-3 py-1 border-b border-border overflow-x-auto hide-scrollbar">
               {INTERVALS.map(iv => (
                 <button
                   key={iv.value}
@@ -1311,7 +1311,7 @@ export default function TokenDetail() {
                   Futures Trade {coinName}
                 </Button>
               </SheetTrigger>
-              <SheetContent side="bottom" className="h-[85vh] px-0 pb-safe">
+              <SheetContent side="bottom" className="h-[85dvh] px-0 pb-safe">
                 <SheetHeader className="px-4 pb-2 border-b border-border">
                   <SheetTitle>Futures - {coinName}/USDT</SheetTitle>
                 </SheetHeader>
@@ -1331,7 +1331,7 @@ export default function TokenDetail() {
                     Buy {coinName}
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="bottom" className="h-[80vh] px-0 pb-safe">
+                <SheetContent side="bottom" className="h-[85dvh] px-0 pb-safe">
                   <SheetHeader className="px-4 pb-2 border-b border-border">
                     <SheetTitle>Buy {coinName}</SheetTitle>
                   </SheetHeader>
@@ -1350,7 +1350,7 @@ export default function TokenDetail() {
                     Sell {coinName}
                   </Button>
                 </SheetTrigger>
-                <SheetContent side="bottom" className="h-[80vh] px-0 pb-safe">
+                <SheetContent side="bottom" className="h-[85dvh] px-0 pb-safe">
                   <SheetHeader className="px-4 pb-2 border-b border-border">
                     <SheetTitle>Sell {coinName}</SheetTitle>
                   </SheetHeader>
@@ -1364,7 +1364,7 @@ export default function TokenDetail() {
         </div>
 
         <Sheet open={isAlertSheetOpen} onOpenChange={setIsAlertSheetOpen}>
-          <SheetContent side="bottom" className="h-auto max-h-[70vh] px-0 pb-safe">
+          <SheetContent side="bottom" className="h-auto max-h-[80dvh] px-0 pb-safe">
             <SheetHeader className="px-4 pb-2 border-b border-border">
               <SheetTitle className="flex items-center gap-2">
                 <Bell className="w-4 h-4 text-[#f0b90b]" />

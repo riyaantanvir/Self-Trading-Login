@@ -260,8 +260,8 @@ export default function AssetsPage() {
 
   return (
     <LayoutShell>
-      <div className="p-4 md:p-6 max-w-3xl mx-auto">
-        <div className="flex items-center gap-4 mb-6 border-b border-border pb-3 overflow-x-auto">
+      <div className="px-3 py-3 md:p-6 max-w-3xl mx-auto">
+        <div className="flex items-center gap-4 mb-6 border-b border-border pb-3 overflow-x-auto hide-scrollbar">
           <button
             className={`text-base font-semibold pb-2 whitespace-nowrap ${activeTab === "overview" ? "text-foreground border-b-2 border-[#0ecb81]" : "text-muted-foreground"}`}
             onClick={() => setActiveTab("overview")}
@@ -324,10 +324,10 @@ export default function AssetsPage() {
             </button>
           </div>
           <div className="flex items-baseline gap-2 mb-1 flex-wrap">
-            <span className="text-2xl sm:text-3xl font-bold text-foreground font-mono" data-testid="text-total-value">
+            <span className="text-xl sm:text-3xl font-bold text-foreground font-mono" data-testid="text-total-value">
               {formatAmount(totalEstValue)}
             </span>
-            <span className="text-base sm:text-lg text-muted-foreground">{isRealMode ? "USD" : "USDT"}</span>
+            <span className="text-sm sm:text-lg text-muted-foreground">{isRealMode ? "USD" : "USDT"}</span>
           </div>
           <div className="text-sm text-muted-foreground mb-1" data-testid="text-total-usd">
             {balanceVisible ? `~ $${formatAmount(totalEstValue)}` : "~ $****"}
@@ -390,13 +390,13 @@ export default function AssetsPage() {
 
           {!isRealMode && (
             <div
-              className="rounded-md border border-border bg-card p-4 mb-3 hover-elevate cursor-pointer"
+              className="rounded-md border border-border bg-card p-3 sm:p-4 mb-3 hover-elevate cursor-pointer"
               onClick={() => navigate("/")}
               data-testid="card-asset-USDT"
             >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-full bg-[#26A17B] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+              <div className="flex items-start justify-between gap-3 sm:gap-4">
+                <div className="flex items-center gap-2.5 sm:gap-3">
+                  <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#26A17B] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
                     $
                   </div>
                   <div>
@@ -421,7 +421,7 @@ export default function AssetsPage() {
             return (
               <div
                 key={item.symbol}
-                className={`rounded-md border border-border bg-card p-4 mb-3 hover-elevate cursor-pointer transition-colors duration-300 ${
+                className={`rounded-md border border-border bg-card p-3 sm:p-4 mb-3 hover-elevate cursor-pointer transition-colors duration-300 ${
                   flash === "up"
                     ? "bg-[#0ecb81]/5"
                     : flash === "down"
@@ -433,10 +433,10 @@ export default function AssetsPage() {
                 }
                 data-testid={`card-asset-${item.coinName}`}
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-start justify-between gap-3 sm:gap-4">
+                  <div className="flex items-center gap-2.5 sm:gap-3">
                     <div
-                      className={`w-9 h-9 rounded-full ${item.colorClass} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}
+                      className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full ${item.colorClass} flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}
                     >
                       {item.coinName.charAt(0)}
                     </div>
@@ -480,7 +480,7 @@ export default function AssetsPage() {
                     </div>
                   </div>
                 </div>
-                <div className="flex items-center justify-end gap-2 mt-3">
+                <div className="flex items-center justify-end gap-2 mt-2.5 sm:mt-3">
                   <Button
                     size="sm"
                     variant="outline"
@@ -609,10 +609,10 @@ function FuturesAssetsContent({
           </button>
         </div>
         <div className="flex items-baseline gap-2 mb-1 flex-wrap">
-          <span className="text-2xl sm:text-3xl font-bold text-foreground font-mono" data-testid="text-futures-total">
+          <span className="text-xl sm:text-3xl font-bold text-foreground font-mono" data-testid="text-futures-total">
             {balanceVisible ? formatAmount(totalFuturesValue) : "****"}
           </span>
-          <span className="text-base sm:text-lg text-muted-foreground">USDT</span>
+          <span className="text-sm sm:text-lg text-muted-foreground">USDT</span>
         </div>
         <div className="text-sm text-muted-foreground mb-1" data-testid="text-futures-usd">
           {balanceVisible ? `~ $${formatAmount(totalFuturesValue)}` : "~ $****"}
@@ -710,7 +710,7 @@ function FuturesAssetsContent({
             return (
               <div
                 key={pos.id}
-                className="rounded-md border border-border bg-card p-4 mb-3 hover-elevate cursor-pointer"
+                className="rounded-md border border-border bg-card p-3 sm:p-4 mb-3 hover-elevate cursor-pointer"
                 onClick={() => navigate(`/trade/${pos.symbol.toLowerCase()}`)}
                 data-testid={`card-futures-position-${pos.id}`}
               >

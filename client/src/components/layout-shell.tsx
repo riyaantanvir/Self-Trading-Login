@@ -66,7 +66,7 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <header className="h-12 sm:h-14 border-b border-border flex items-center justify-between px-3 sm:px-4 gap-2 sm:gap-4 bg-card/50 sticky top-0 z-[9999]">
+      <header className="h-12 sm:h-14 border-b border-border flex items-center justify-between px-3 sm:px-4 gap-2 sm:gap-4 bg-card/50 sticky top-0 z-[9999] pt-safe">
         <div className="flex items-center gap-4 sm:gap-6">
           <Link href="/">
             <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer" data-testid="link-home">

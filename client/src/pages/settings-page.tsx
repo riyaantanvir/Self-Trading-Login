@@ -78,8 +78,8 @@ export default function SettingsPage() {
 
   return (
     <LayoutShell>
-      <div className="max-w-lg mx-auto p-4 space-y-4">
-        <h1 className="text-lg font-bold text-foreground" data-testid="text-settings-title">Settings</h1>
+      <div className="max-w-lg mx-auto px-3 py-3 md:p-6 space-y-4">
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground" data-testid="text-settings-title">Settings</h1>
 
         <Card className="divide-y divide-border">
           <div className="flex items-center gap-3 p-4">

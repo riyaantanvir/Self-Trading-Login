@@ -175,7 +175,7 @@ export default function AdminPanel() {
   if (view === "apikeys") {
     return (
       <LayoutShell>
-        <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
+        <div className="px-3 py-3 md:p-6 max-w-4xl mx-auto space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <Button
               variant="ghost"
@@ -186,7 +186,7 @@ export default function AdminPanel() {
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <div>
-              <h1 className="text-xl font-bold text-foreground" data-testid="text-admin-apikeys-title">
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground" data-testid="text-admin-apikeys-title">
                 API Key Management
               </h1>
               <p className="text-xs text-muted-foreground">
@@ -374,7 +374,7 @@ export default function AdminPanel() {
   if (view === "coins") {
     return (
       <LayoutShell>
-        <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
+        <div className="px-3 py-3 md:p-6 max-w-4xl mx-auto space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <Button
               variant="ghost"
@@ -385,7 +385,7 @@ export default function AdminPanel() {
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <div>
-              <h1 className="text-xl font-bold text-foreground" data-testid="text-admin-coins-title">
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground" data-testid="text-admin-coins-title">
                 Manage Tracked Coins
               </h1>
               <p className="text-xs text-muted-foreground">
@@ -500,7 +500,7 @@ export default function AdminPanel() {
   if (view === "users") {
     return (
       <LayoutShell>
-        <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-4">
+        <div className="px-3 py-3 md:p-6 max-w-4xl mx-auto space-y-4">
           <div className="flex items-center gap-3 flex-wrap">
             <Button
               variant="ghost"
@@ -511,7 +511,7 @@ export default function AdminPanel() {
               <ArrowLeft className="w-4 h-4" />
             </Button>
             <div>
-              <h1 className="text-xl font-bold text-foreground" data-testid="text-admin-users-title">
+              <h1 className="text-xl sm:text-2xl font-bold text-foreground" data-testid="text-admin-users-title">
                 User Management & Balance Top-up
               </h1>
               <p className="text-xs text-muted-foreground">
@@ -650,9 +650,9 @@ export default function AdminPanel() {
 
   return (
     <LayoutShell>
-      <div className="p-4 md:p-6 max-w-4xl mx-auto">
+      <div className="px-3 py-3 md:p-6 max-w-4xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-foreground" data-testid="text-page-title">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground" data-testid="text-page-title">
             Admin Panel
           </h1>
           <p className="text-sm text-muted-foreground mt-1">

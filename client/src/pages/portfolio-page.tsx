@@ -128,8 +128,8 @@ export default function PortfolioPage() {
 
   return (
     <LayoutShell>
-      <div className="p-4 md:p-6 max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold text-foreground mb-6" data-testid="text-page-title">Portfolio</h1>
+      <div className="px-3 py-3 md:p-6 max-w-7xl mx-auto">
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground mb-4" data-testid="text-page-title">Portfolio</h1>
 
         <div className={`grid grid-cols-1 ${isRealMode ? "md:grid-cols-2" : "md:grid-cols-3"} gap-4 mb-6`}>
           <Card>
@@ -138,7 +138,7 @@ export default function PortfolioPage() {
               <Wallet className="w-4 h-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold font-mono" data-testid="text-total-value">
+              <div className="text-lg sm:text-2xl font-bold font-mono" data-testid="text-total-value">
                 ${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             </CardContent>
@@ -150,7 +150,7 @@ export default function PortfolioPage() {
               {totalPnL >= 0 ? <TrendingUp className="w-4 h-4 text-[#0ecb81]" /> : <TrendingDown className="w-4 h-4 text-[#f6465d]" />}
             </CardHeader>
             <CardContent>
-              <div className={`text-2xl font-bold font-mono ${totalPnL >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`} data-testid="text-total-pnl">
+              <div className={`text-lg sm:text-2xl font-bold font-mono ${totalPnL >= 0 ? "text-[#0ecb81]" : "text-[#f6465d]"}`} data-testid="text-total-pnl">
                 {totalPnL >= 0 ? "+" : ""}${totalPnL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             </CardContent>
@@ -161,7 +161,7 @@ export default function PortfolioPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Holdings</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold font-mono" data-testid="text-holdings-count">
+              <div className="text-lg sm:text-2xl font-bold font-mono" data-testid="text-holdings-count">
                 {portfolioItems.length}
               </div>
             </CardContent>

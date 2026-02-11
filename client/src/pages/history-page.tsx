@@ -34,8 +34,8 @@ export default function HistoryPage() {
 
   return (
     <LayoutShell>
-      <div className="p-4 md:p-6 max-w-7xl mx-auto">
-        <h1 className="text-2xl font-bold text-foreground mb-6" data-testid="text-page-title">Trade History</h1>
+      <div className="px-3 py-3 md:p-6 max-w-7xl mx-auto">
+        <h1 className="text-xl sm:text-2xl font-bold text-foreground mb-4" data-testid="text-page-title">Trade History</h1>
 
         <div className="hidden md:block rounded-md border border-border overflow-hidden bg-card">
           <div className="overflow-x-auto">

@@ -126,7 +126,7 @@ export default function PayPage() {
 
   return (
     <LayoutShell>
-      <div className="max-w-lg mx-auto px-4 py-6">
+      <div className="max-w-lg mx-auto px-3 py-3 md:px-4 md:py-6">
         <div className="flex items-center gap-3 mb-6">
           {step !== "search" && step !== "success" && (
             <Button variant="ghost" size="icon" onClick={handleBack} data-testid="button-pay-back">

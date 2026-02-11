@@ -55,7 +55,7 @@ function FearGreedGauge({ value, label }: { value: number; label: string }) {
 
   return (
     <div className="flex flex-col items-center gap-3">
-      <div className="relative w-56 h-32 overflow-visible">
+      <div className="relative w-40 h-24 sm:w-56 sm:h-32 overflow-visible">
         <svg viewBox="0 0 200 110" className="w-full h-full">
           <defs>
             <linearGradient id="gaugeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -97,7 +97,7 @@ function FearGreedGauge({ value, label }: { value: number; label: string }) {
         </svg>
       </div>
       <div className="text-center">
-        <div className="text-4xl font-bold font-mono" style={{ color }} data-testid="text-fng-value">
+        <div className="text-2xl sm:text-4xl font-bold font-mono" style={{ color }} data-testid="text-fng-value">
           {value}
         </div>
         <div className="text-sm font-medium mt-1" style={{ color }} data-testid="text-fng-label">
@@ -360,7 +360,7 @@ function MMTAnalyticsTab({ tickers }: { tickers: Ticker[] }) {
 
   return (
     <div className="space-y-4" data-testid="mmt-analytics-tab">
-      <div className="flex items-center gap-1 overflow-x-auto pb-1" data-testid="mmt-sub-nav">
+      <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar pb-1" data-testid="mmt-sub-nav">
         {mmtSections.map((sec) => (
           <Button
             key={sec.key}
@@ -580,7 +580,7 @@ function MMTAnalyticsTab({ tickers }: { tickers: Ticker[] }) {
               </div>
             ) : trends && trends.length > 0 ? (
               <div className="space-y-1">
-                <div className="grid grid-cols-[1fr_60px_60px_60px_70px] gap-1 text-[10px] text-muted-foreground px-2 mb-1">
+                <div className="grid grid-cols-[1fr_50px_50px_50px_60px] sm:grid-cols-[1fr_60px_60px_60px_70px] gap-1 text-[10px] text-muted-foreground px-2 mb-1">
                   <span>Coin</span>
                   <span className="text-right">EMA 9</span>
                   <span className="text-right">EMA 21</span>
@@ -594,7 +594,7 @@ function MMTAnalyticsTab({ tickers }: { tickers: Ticker[] }) {
                   return (
                     <div
                       key={t.symbol}
-                      className="grid grid-cols-[1fr_60px_60px_60px_70px] gap-1 items-center text-xs cursor-pointer hover-elevate rounded-md px-2 py-1.5"
+                      className="grid grid-cols-[1fr_50px_50px_50px_60px] sm:grid-cols-[1fr_60px_60px_60px_70px] gap-1 items-center text-xs cursor-pointer hover-elevate rounded-md px-2 py-1.5"
                       onClick={() => navigate(`/trade/${t.symbol.toLowerCase()}`)}
                       data-testid={`row-trend-${t.symbol}`}
                     >
@@ -1233,12 +1233,12 @@ export default function Dashboard() {
 
   return (
     <LayoutShell>
-      <div className="p-4 md:p-6 max-w-7xl mx-auto">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div className="px-3 py-3 md:p-6 max-w-7xl mx-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
           <div>
-            <h1 className="text-2xl font-bold text-foreground" data-testid="text-page-title">Markets</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-foreground" data-testid="text-page-title">Markets</h1>
             <p className="text-sm text-muted-foreground mt-1">
-              Real-time prices from Binance
+              Real-time crypto prices
             </p>
           </div>
           {(activeTab === "all" || activeTab === "watchlist") && (
@@ -1256,7 +1256,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-2 mb-4 overflow-x-auto">
+        <div className="flex items-center gap-1 sm:gap-2 mb-4 overflow-x-auto hide-scrollbar">
           {[
             { key: "all" as const, label: "All", icon: null },
             { key: "signals" as const, label: "Signals", icon: Crosshair },

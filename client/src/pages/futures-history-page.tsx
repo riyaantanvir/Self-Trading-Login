@@ -76,7 +76,7 @@ export default function FuturesHistoryPage() {
 
   return (
     <LayoutShell>
-      <div className="p-4 md:p-6 max-w-4xl mx-auto">
+      <div className="px-3 py-3 md:p-6 max-w-4xl mx-auto">
         <div className="flex items-center gap-3 mb-6 flex-wrap">
           <Button
             size="icon"
